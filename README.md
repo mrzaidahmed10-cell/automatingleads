@@ -13,7 +13,7 @@ Replies go to your reply-to address; you handle the sequence from there. Mark le
 ## Deploy
 
 1. Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git** → pick this repo.
-2. Build command: *(none)*. **Build output directory: `public`**.
+2. Build command: *(none)*. **Build output directory: `public`** (recommended). Leaving it blank also works: the root `index.html` redirects to `/public/`.
 3. After the first deploy, go to **Settings → Bindings → Add → KV namespace**. Create a namespace and bind it with the variable name **`LEADS`**.
 4. **Settings → Variables and Secrets** (add as *Secret*):
 
