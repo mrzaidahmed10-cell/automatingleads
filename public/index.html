@@ -159,10 +159,12 @@ let S={leads:[],settings:{},sentToday:0,configured:{}},filter='all',query='',cur
 
 function toast(m,ms=3200){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),ms)}
 async function api(path,opt={}){
-  const r=await fetch('/api/'+path,{method:opt.method||'GET',headers:{'content-type':'application/json'},body:opt.body?JSON.stringify(opt.body):undefined,credentials:'same-origin'});
+  let r;
+  try{r=await fetch('/api/'+path,{method:opt.method||'GET',headers:{'content-type':'application/json'},body:opt.body?JSON.stringify(opt.body):undefined,credentials:'same-origin'})}
+  catch{throw new Error('Network error, check your connection.')}
   if(r.status===401){showLogin();throw new Error('Signed out')}
   const j=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(j.error||('Error '+r.status));
+  if(!r.ok)throw new Error(j.error||(r.status===404?'API not found: the Functions did not deploy. Check the deployment has a Functions bundle.':'Server error '+r.status));
   return j;
 }
 async function act(btn,fn){
@@ -181,7 +183,10 @@ $('#lf').onsubmit=async e=>{e.preventDefault();$('#le').textContent='';
 $('#bOut').onclick=async()=>{await fetch('/api/logout',{credentials:'same-origin'});showLogin()};
 
 async function boot(){
-  try{S=await api('state')}catch{return}
+  try{S=await api('state')}catch(e){
+    if(e.message!=='Signed out'){showLogin();$('#le').textContent=e.message}
+    return;
+  }
   $('#login').classList.add('hide');$('#app').classList.remove('hide');render();
 }
 
