@@ -2,7 +2,7 @@ import { json, loadDB, saveDB, isEmail, today, unsubToken, DEFAULT_SETTINGS } fr
 import { findBusinesses } from '../../lib/osm.js';
 import { auditSite } from '../../lib/audit.js';
 import { draftEmail } from '../../lib/groq.js';
-import { sendEmail } from '../../lib/email.js';
+import { sendEmail, emailReady } from '../../lib/email.js';
 
 const EDITABLE = ['name', 'email', 'website', 'phone', 'notes', 'status', 'category', 'address', 'draft'];
 const STATUSES = ['new', 'drafted', 'sent', 'replied', 'unsub', 'skip'];
@@ -55,7 +55,7 @@ async function state(env) {
     suppressed: db.suppress.length,
     configured: {
       groq: !!env.GROQ_API_KEY,
-      email: !!(env.EMAIL_API_KEY && env.EMAIL_FROM),
+      email: emailReady(env),
     },
   });
 }
@@ -160,7 +160,7 @@ async function send(env, request, p) {
   const s = db.settings;
   const test = !!p.test;
 
-  if (!env.EMAIL_API_KEY || !env.EMAIL_FROM) throw new Error('Email API not configured (EMAIL_API_KEY and EMAIL_FROM secrets).');
+  if (!emailReady(env)) throw new Error('Email sending is not configured. Add the email secrets listed in the README.');
   if (!s.senderName || !s.address) throw new Error('Open Settings and add your name and mailing address first (required by CAN-SPAM).');
 
   const subject = String(p.subject ?? lead.draft?.subject ?? '').trim();

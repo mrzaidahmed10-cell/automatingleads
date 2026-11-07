@@ -230,7 +230,7 @@ function render(){
   $('#quota').textContent=`Sent today ${S.sentToday} / ${S.settings.dailyLimit}`;
   const miss=[];
   if(!S.configured.groq)miss.push('GROQ_API_KEY');
-  if(!S.configured.email)miss.push('EMAIL_API_KEY / EMAIL_FROM');
+  if(!S.configured.email)miss.push('email sending secrets (see README)');
   if(!S.settings.senderName||!S.settings.address)miss.push('your name + mailing address in Settings');
   $('#banner').innerHTML=miss.length?`<div class="banner">Before sending, add: ${esc(miss.join(', '))}.</div>`:'';
   $('#chips').innerHTML=FILTERS.map(([k,t])=>`<button class="chip ${k===filter?'on':''}" data-f="${k}">${t}</button>`).join('');

@@ -23,7 +23,8 @@ Replies go to your reply-to address; you handle the sequence from there. Mark le
 | `GROQ_API_KEY` | Your Groq key |
 | `EMAIL_API_KEY` | Your email provider's API key |
 | `EMAIL_FROM` | e.g. `Zaid <zaid@yourdomain.com>` (must be a verified sending domain) |
-| `EMAIL_PROVIDER` | optional: `resend` (default) or `sendgrid` |
+| `EMAIL_PROVIDER` | optional: `resend` (default), `sendgrid`, or `gmail` |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | only for `EMAIL_PROVIDER=gmail` (no `EMAIL_API_KEY` needed; `EMAIL_FROM` optional, Gmail always sends as your account) |
 | `GROQ_MODEL` | optional, default `llama-3.3-70b-versatile` |
 | `UNSUB_SECRET` | optional, random string for unsubscribe links (defaults to the dashboard password) |
 
