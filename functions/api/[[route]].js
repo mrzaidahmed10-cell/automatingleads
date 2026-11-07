@@ -2,7 +2,7 @@ import { json, loadDB, saveDB, isEmail, today, unsubToken, DEFAULT_SETTINGS } fr
 import { findBusinesses } from '../../lib/osm.js';
 import { auditSite } from '../../lib/audit.js';
 import { draftEmail } from '../../lib/groq.js';
-import { sendEmail, emailReady } from '../../lib/email.js';
+import { sendEmail, emailReady, renderEmail } from '../../lib/email.js';
 
 const EDITABLE = ['name', 'email', 'website', 'phone', 'notes', 'status', 'category', 'address', 'draft'];
 const STATUSES = ['new', 'drafted', 'sent', 'replied', 'unsub', 'skip'];
@@ -184,12 +184,17 @@ async function send(env, request, p) {
 
   const origin = new URL(request.url).origin;
   const unsubUrl = `${origin}/unsubscribe?e=${encodeURIComponent(to)}&t=${await unsubToken(env, to)}`;
-  const footer =
-    `\n\n--\n${s.senderName}` +
-    (s.businessName ? `\n${s.businessName}` : '') +
-    `\n${s.address}\nNot interested? Opt out here: ${unsubUrl}`;
+  const { text: fullText, html } = renderEmail(s, text, unsubUrl);
 
-  await sendEmail(env, { to, subject: test ? '[TEST] ' + subject : subject, text: text + footer, replyTo: s.replyTo || undefined, unsubUrl });
+  await sendEmail(env, {
+    to,
+    subject: test ? '[TEST] ' + subject : subject,
+    text: fullText,
+    html,
+    replyTo: s.replyTo || undefined,
+    unsubUrl,
+    fromName: s.senderName,
+  });
 
   if (!test) {
     lead.status = 'sent';
