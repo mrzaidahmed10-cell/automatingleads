@@ -2,13 +2,14 @@
 
 Personal lead-finder and outreach dashboard for Cloudflare Pages.
 
-- **Find leads**: businesses near a city with no website (or a website to audit), from OpenStreetMap. No API key needed.
-- **Audit**: scores how weak a site is (HTTPS, mobile viewport, old copyright, speed, layout) and pulls a contact email from the site when it can.
-- **Draft**: Groq writes a short, specific email per lead. You can edit before sending.
-- **Send**: through your email API, one lead at a time or in bulk, with a daily cap.
-- **Compliance built in**: every email gets your mailing address and a one-click unsubscribe link (also sent as `List-Unsubscribe` headers). Unsubscribed addresses are blocked forever.
-
-Replies go to your reply-to address; you handle the sequence from there. Mark leads Replied / Skipped in the dashboard.
+- **Dashboard:** next-best actions, KPIs, 14-day activity chart, pipeline funnel, recent activity.
+- **Leads:** find businesses near a city (no website, or a website to audit), edit emails inline, bulk audit / draft / send.
+- **Audit:** scores how weak a site is (HTTPS, mobile viewport, old copyright, speed, layout) and pulls a contact email from it when possible.
+- **AI openers:** Groq writes short, specific, honest cold emails using a built-in playbook (one true observation, plain words, one tiny ask), with tone choice and alternate subject lines.
+- **Quick replies:** reply and follow-up composer with editable templates and an AI that answers pasted replies and suggests next status.
+- **Analytics:** sends per day, reply rate, lead quality mix, which lead types and categories reply.
+- **Assistant:** a chat that can search leads, find new ones, audit sites, write drafts, edit leads, and queue emails. It never sends on its own; you approve each email with one click.
+- **Compliance built in:** every email gets your mailing address and a clickable Unsubscribe link (plus `List-Unsubscribe` headers). Unsubscribed addresses are blocked for good.
 
 ## Deploy
 
@@ -20,19 +21,19 @@ Replies go to your reply-to address; you handle the sequence from there. Mark le
 | Name | Value |
 |---|---|
 | `DASH_PASSWORD` | Password for the dashboard |
-| `GROQ_API_KEY` | Your Groq key |
-| `EMAIL_API_KEY` | Your email provider's API key |
-| `EMAIL_FROM` | e.g. `Zaid <zaid@yourdomain.com>` (must be a verified sending domain) |
-| `EMAIL_PROVIDER` | optional: `resend` (default), `sendgrid`, or `gmail` |
-| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | only for `EMAIL_PROVIDER=gmail` (no `EMAIL_API_KEY` needed; `EMAIL_FROM` optional, Gmail always sends as your account) |
-| `GROQ_MODEL` | optional, default `llama-3.3-70b-versatile` |
+| `GROQ_API_KEY` | Your Groq key (the app picks the best model your key can use) |
+| `EMAIL_PROVIDER` | `resend` (default), `sendgrid`, or `gmail` |
+| `EMAIL_API_KEY`, `EMAIL_FROM` | For Resend/SendGrid. `EMAIL_FROM` like `Zaid <zaid@yourdomain.com>` on a verified domain |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | For `EMAIL_PROVIDER=gmail` (Gmail always sends as your account) |
+| `GROQ_MODEL` | optional, forces a specific Groq model |
 | `UNSUB_SECRET` | optional, random string for unsubscribe links (defaults to the dashboard password) |
 
-5. Redeploy (bindings and secrets apply on the next deployment), open the site, sign in, and fill **Settings** (name, mailing address, reply-to).
+5. Redeploy (bindings and secrets apply on the next deployment), open the site, sign in, and fill **Settings** (name, mailing address, reply-to, your offer, and notes on pricing/process for the AI).
 
 ## Notes
 
 - Keys never touch the browser. All API calls happen in `functions/`, behind a signed HTTP-only login cookie.
 - Send a **test to yourself** from a lead's panel first and check it lands in the inbox.
-- Start with a low daily limit (10-20) on a new sending domain, and set up SPF/DKIM/DMARC with your email provider.
-- Lead data comes from OpenStreetMap, so coverage varies. Many no-website businesses have no email listed; add one manually or use the phone number.
+- Start with a low daily limit (10-20) and set up SPF/DKIM/DMARC if you use your own domain.
+- Lead data comes from OpenStreetMap, so coverage varies by town. Geocoding tries Open-Meteo then Nominatim, and the map query tries three servers.
+- Sending uses the `gmail.send` scope only, so the app cannot read your inbox. Paste replies into the Quick replies page to have the AI answer them.

@@ -2,379 +2,48 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#5b5bf0">
 <title>Outreach</title>
-<style>
-:root{--bg:#f5f6f8;--card:#fff;--ink:#0f172a;--mut:#64748b;--line:#e6e8ec;--acc:#4f46e5;--acc2:#eef0ff;--on:#fff;--ok:#15803d;--okbg:#e8f6ec;--warn:#b45309;--warnbg:#fdf3e1;--bad:#b91c1c;--badbg:#fdeceb;--sh:0 1px 2px #0f172a0d,0 4px 18px #0f172a0a;--r:14px}
-@media(prefers-color-scheme:dark){:root{--bg:#0b0d12;--card:#12151c;--ink:#e8eaf0;--mut:#8b93a5;--line:#222736;--acc:#8087ff;--acc2:#1b1f33;--on:#0b0d12;--ok:#5ad183;--okbg:#10231a;--warn:#f0b455;--warnbg:#2a2111;--bad:#ff8a84;--badbg:#2b1514;--sh:0 1px 2px #0006,0 6px 24px #0004}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
-button,input,select,textarea{font:inherit;color:inherit}
-a{color:var(--acc)}
-.hide{display:none!important}
-header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.bar{max-width:1180px;margin:auto;padding:12px 20px;display:flex;align-items:center;gap:12px}
-.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:-.01em}
-.logo i{width:28px;height:28px;border-radius:8px;background:var(--acc);display:grid;place-items:center;color:var(--on);font-style:normal;font-size:15px}
-.sp{flex:1}
-main{max-width:1180px;margin:auto;padding:20px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
-.btn{border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:550;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
-.btn:hover{border-color:var(--mut)}
-.btn.p{background:var(--acc);border-color:var(--acc);color:var(--on)}
-.btn.p:hover{filter:brightness(1.07)}
-.btn.d{color:var(--bad)}
-.btn.s{padding:5px 10px;font-size:13px;border-radius:8px}
-.btn:disabled{opacity:.55;cursor:default}
-.spin{width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:r .7s linear infinite}
-@keyframes r{to{transform:rotate(360deg)}}
-input,select,textarea{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 11px;width:100%;outline:none}
-input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc2)}
-textarea{resize:vertical;min-height:170px;line-height:1.55}
-label{display:block;font-size:12px;font-weight:600;color:var(--mut);margin:0 0 5px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px}
-.stat{padding:14px 16px}
-.stat b{display:block;font-size:24px;letter-spacing:-.02em;line-height:1.1}
-.stat span{color:var(--mut);font-size:12.5px}
-.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
-.row>div{flex:1;min-width:140px}
-.panel{padding:16px;margin-bottom:16px}
-.panel h3{margin:0 0 12px;font-size:14px}
-.banner{background:var(--warnbg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);padding:10px 14px;border-radius:10px;margin-bottom:16px}
-.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
-.chips{display:flex;gap:6px;flex-wrap:wrap}
-.chip{border:1px solid var(--line);background:transparent;border-radius:99px;padding:4px 11px;cursor:pointer;font-size:13px;color:var(--mut)}
-.chip.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);font-weight:600}
-.tw{overflow-x:auto}
-table{width:100%;border-collapse:collapse}
-th{text-align:left;font-size:12px;color:var(--mut);font-weight:600;padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
-tbody tr{cursor:pointer}
-tbody tr:hover{background:color-mix(in srgb,var(--acc2) 55%,transparent)}
-tr:last-child td{border-bottom:0}
-.nm{font-weight:600}
-.sub{color:var(--mut);font-size:12.5px}
-td input.em{min-width:210px;padding:6px 9px;font-size:13px}
-.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;background:var(--bg);color:var(--mut);border:1px solid var(--line);white-space:nowrap}
-.pill.ok{background:var(--okbg);color:var(--ok);border-color:transparent}
-.pill.warn{background:var(--warnbg);color:var(--warn);border-color:transparent}
-.pill.bad{background:var(--badbg);color:var(--bad);border-color:transparent}
-.pill.acc{background:var(--acc2);color:var(--acc);border-color:transparent}
-.empty{padding:40px;text-align:center;color:var(--mut)}
-.scrim{position:fixed;inset:0;background:#0008;z-index:20;display:flex;justify-content:flex-end}
-.drawer{width:min(560px,100%);height:100%;overflow:auto;background:var(--bg);padding:20px;animation:sl .18s ease-out}
-@keyframes sl{from{transform:translateX(30px);opacity:0}}
-.modal{align-self:center;margin:auto;width:min(520px,calc(100% - 24px));max-height:92vh;overflow:auto;padding:20px}
-.scrim.c{justify-content:center}
-.dh{display:flex;gap:10px;align-items:flex-start;margin-bottom:14px}
-.dh h2{margin:0;font-size:19px;letter-spacing:-.01em}
-.x{border:0;background:none;font-size:22px;cursor:pointer;color:var(--mut);line-height:1}
-.sec{padding:14px;margin-bottom:12px}
-.sec h4{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
-.iss{margin:0;padding-left:18px}
-.iss li{margin:2px 0}
-.acts{display:flex;gap:8px;flex-wrap:wrap}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.stack>*+*{margin-top:10px}
-#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:50;max-width:92vw;box-shadow:var(--sh);opacity:0;pointer-events:none;transition:.2s}
-#toast.on{opacity:1}
-#login{min-height:100vh;display:grid;place-items:center;padding:20px}
-#login .card{padding:28px;width:min(360px,100%)}
-@media(max-width:640px){.g2{grid-template-columns:1fr}.hm{display:none}}
-</style>
+<script>try{var t=localStorage.getItem('theme');if(!t)t=matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
 
 <div id="login" class="hide">
   <form class="card stack" id="lf">
-    <div class="logo"><i>↗</i>Outreach</div>
+    <div class="brand" style="padding:0"><i id="logoI"></i>Outreach</div>
     <div><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" autofocus></div>
     <button class="btn p" style="width:100%;justify-content:center">Sign in</button>
-    <div class="sub" id="le"></div>
+    <div class="hint" id="le" style="color:var(--bad)"></div>
   </form>
 </div>
 
-<div id="app" class="hide">
-<header><div class="bar">
-  <div class="logo"><i>↗</i>Outreach</div><div class="sp"></div>
-  <span class="sub hm" id="quota"></span>
-  <button class="btn s" id="bSet">Settings</button>
-  <button class="btn s" id="bOut">Sign out</button>
-</div></header>
-
-<main>
-  <div id="banner"></div>
-  <div class="stats" id="stats"></div>
-
-  <div class="card panel">
-    <h3>Find leads</h3>
-    <div class="row">
-      <div style="flex:2"><label>City</label><input id="fCity" value="Iowa City, Iowa"></div>
-      <div><label>Category</label>
-        <select id="fCat"><option value="all">Everything</option><option value="restaurants">Food &amp; drink</option><option value="beauty">Salons &amp; beauty</option><option value="auto">Auto</option><option value="fitness">Fitness</option><option value="trades">Trades &amp; crafts</option><option value="health">Health &amp; vet</option><option value="retail">Retail</option><option value="offices">Offices</option></select></div>
-      <div><label>Looking for</label>
-        <select id="fMode"><option value="none">No website</option><option value="has_site">Has a website (audit it)</option></select></div>
-      <div style="max-width:120px;min-width:100px"><label>Radius</label>
-        <select id="fRad"><option value="5">5 km</option><option value="15" selected>15 km</option><option value="30">30 km</option><option value="50">50 km</option></select></div>
-      <div style="flex:0 0 auto;min-width:0"><button class="btn p" id="bFind">Find leads</button></div>
+<div id="app" class="shell hide">
+  <aside class="side">
+    <div class="brand"><i class="lg"></i>Outreach</div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidefoot">
+      <div class="quota"><b id="qTxt"></b><div class="meter"><i id="qBar" style="width:0"></i></div><div class="hint" style="margin-top:6px;font-size:12px">Daily send limit</div></div>
+      <div class="foot2">
+        <button class="btn s" id="bTheme" style="flex:1;justify-content:center" title="Toggle dark mode"></button>
+        <button class="btn s" id="bOut" style="flex:1;justify-content:center">Sign out</button>
+      </div>
     </div>
-    <div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
-      <div style="flex:2"><label>Add a business manually</label><input id="mName" placeholder="Business name"></div>
-      <div style="flex:2"><label>Email to approach</label><input id="mEmail" type="email" placeholder="owner@business.com"></div>
-      <div style="flex:2"><label>Website (optional)</label><input id="mSite" placeholder="business.com"></div>
-      <div style="flex:0 0 auto;min-width:0"><button class="btn" id="bAdd">Add</button></div>
-    </div>
+  </aside>
+  <div class="main">
+    <header class="top"><h1 id="title"></h1><div class="sp"></div><span class="hint hm" id="topHint"></span><button class="btn s g" id="bThemeM" title="Toggle dark mode"></button></header>
+    <section id="view"></section>
   </div>
-
-  <div class="card">
-    <div class="tools">
-      <div class="chips" id="chips"></div><div class="sp"></div>
-      <input id="q" placeholder="Search…" style="max-width:200px">
-    </div>
-    <div class="tools" style="gap:8px">
-      <button class="btn s" id="bAud">Audit sites</button>
-      <button class="btn s" id="bDraftAll">Draft for all with email</button>
-      <button class="btn s p" id="bSendAll">Send all drafted</button>
-      <span class="sub" id="prog"></span>
-    </div>
-    <div class="tw"><table>
-      <thead><tr><th>Business</th><th>Website</th><th>Email</th><th>Status</th></tr></thead>
-      <tbody id="tb"></tbody>
-    </table></div>
-    <div class="empty hide" id="empty">No leads here yet. Run a search above.</div>
-  </div>
-</main>
+  <nav class="tabbar" id="tabbar"></nav>
 </div>
 
 <div id="ov"></div>
 <div id="toast"></div>
-
-<script>
-const $=s=>document.querySelector(s);
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const validEmail=e=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e||'');
-let S={leads:[],settings:{},sentToday:0,configured:{}},filter='all',query='',cur=null,busyBulk=false;
-
-function toast(m,ms=3200){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),ms)}
-async function api(path,opt={}){
-  let r;
-  try{r=await fetch('/api/'+path,{method:opt.method||'GET',headers:{'content-type':'application/json'},body:opt.body?JSON.stringify(opt.body):undefined,credentials:'same-origin'})}
-  catch{throw new Error('Network error, check your connection.')}
-  if(r.status===401){showLogin();throw new Error('Signed out')}
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(j.error||(r.status===404?'API not found: the Functions did not deploy. Check the deployment has a Functions bundle.':'Server error '+r.status));
-  return j;
-}
-async function act(btn,fn){
-  const old=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span class="spin"></span>'+(btn.dataset.busy||'');
-  try{await fn()}catch(e){toast(e.message,5000)}finally{btn.disabled=false;btn.innerHTML=old}
-}
-
-/* ---------- auth ---------- */
-function showLogin(){$('#app').classList.add('hide');$('#login').classList.remove('hide');$('#ov').innerHTML=''}
-$('#lf').onsubmit=async e=>{e.preventDefault();$('#le').textContent='';
-  const r=await fetch('/api/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:$('#pw').value})});
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok){$('#le').textContent=j.error||'Login failed';return}
-  $('#pw').value='';$('#login').classList.add('hide');boot();
-};
-$('#bOut').onclick=async()=>{await fetch('/api/logout',{credentials:'same-origin'});showLogin()};
-
-async function boot(){
-  try{S=await api('state')}catch(e){
-    if(e.message!=='Signed out'){showLogin();$('#le').textContent=e.message}
-    return;
-  }
-  $('#login').classList.add('hide');$('#app').classList.remove('hide');render();
-}
-
-/* ---------- helpers ---------- */
-const host=u=>{try{return new URL(/^https?:/i.test(u)?u:'https://'+u).host.replace(/^www\./,'')}catch{return u}};
-const href=u=>/^https?:/i.test(u)?u:'https://'+u;
-function siteCell(l){
-  if(!l.website)return '<span class="pill bad">No website</span>';
-  const h=`<a href="${esc(href(l.website))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">${esc(host(l.website))}</a>`;
-  if(!l.audit)return h+'<br><span class="pill">Not audited</span>';
-  const sc=l.audit.score,c=sc>=50?'bad':sc>=25?'warn':'ok';
-  return h+`<br><span class="pill ${c}">${sc>=50?'Poor':sc>=25?'Dated':'Decent'} · ${sc}</span>`;
-}
-function statusPill(l){
-  const m={new:['New',''],drafted:['Drafted','acc'],sent:['Sent','ok'],replied:['Replied','ok'],unsub:['Unsubscribed','bad'],skip:['Skipped','']}[l.status]||['New',''];
-  return `<span class="pill ${m[1]}">${m[0]}</span>`;
-}
-const FILTERS=[['all','All'],['email','Has email'],['noemail','Needs email'],['nosite','No website'],['poor','Poor site'],['drafted','Drafted'],['sent','Sent'],['replied','Replied']];
-function visible(){
-  const q=query.toLowerCase();
-  return S.leads.filter(l=>{
-    if(q&&!(l.name+' '+l.category+' '+l.address+' '+l.email+' '+l.website).toLowerCase().includes(q))return false;
-    switch(filter){
-      case 'email':return validEmail(l.email);
-      case 'noemail':return !validEmail(l.email)&&!['unsub','skip'].includes(l.status);
-      case 'nosite':return !l.website;
-      case 'poor':return l.audit&&l.audit.score>=40;
-      case 'drafted':return l.status==='drafted';
-      case 'sent':return l.status==='sent';
-      case 'replied':return l.status==='replied';
-      default:return true;
-    }
-  });
-}
-
-/* ---------- render ---------- */
-function render(){
-  const L=S.leads,n=f=>L.filter(f).length;
-  const stats=[['Leads',L.length],['With email',n(l=>validEmail(l.email))],['Drafted',n(l=>l.status==='drafted')],['Sent',n(l=>l.status==='sent')],['Replied',n(l=>l.status==='replied')],['Unsubscribed',S.suppressed||0]];
-  $('#stats').innerHTML=stats.map(([k,v])=>`<div class="card stat"><b>${v}</b><span>${k}</span></div>`).join('');
-  $('#quota').textContent=`Sent today ${S.sentToday} / ${S.settings.dailyLimit}`;
-  const miss=[];
-  if(!S.configured.groq)miss.push('GROQ_API_KEY');
-  if(!S.configured.email)miss.push('email sending secrets (see README)');
-  if(!S.settings.senderName||!S.settings.address)miss.push('your name + mailing address in Settings');
-  $('#banner').innerHTML=miss.length?`<div class="banner">Before sending, add: ${esc(miss.join(', '))}.</div>`:'';
-  $('#chips').innerHTML=FILTERS.map(([k,t])=>`<button class="chip ${k===filter?'on':''}" data-f="${k}">${t}</button>`).join('');
-  const rows=visible();
-  $('#empty').classList.toggle('hide',rows.length>0);
-  $('#tb').innerHTML=rows.map(l=>`<tr data-id="${esc(l.id)}">
-    <td><div class="nm">${esc(l.name)}</div><div class="sub">${esc([l.category,l.address||l.phone].filter(Boolean).join(' · '))}</div></td>
-    <td>${siteCell(l)}</td>
-    <td onclick="event.stopPropagation()"><input class="em" data-id="${esc(l.id)}" type="email" placeholder="add email" value="${esc(l.email)}"></td>
-    <td>${statusPill(l)}</td></tr>`).join('');
-  if(cur)drawer();
-}
-$('#chips').onclick=e=>{const b=e.target.closest('.chip');if(b){filter=b.dataset.f;render()}};
-$('#q').oninput=e=>{query=e.target.value;render()};
-$('#tb').onclick=e=>{const tr=e.target.closest('tr');if(tr&&!e.target.closest('input')){cur=tr.dataset.id;drawer()}};
-$('#tb').addEventListener('change',async e=>{
-  const i=e.target.closest('input.em');if(!i)return;
-  try{const r=await api('leads/'+i.dataset.id,{method:'PATCH',body:{email:i.value}});upd(r.lead);toast('Email saved',1500)}catch(x){toast(x.message,4500);render()}
-});
-function upd(l){const i=S.leads.findIndex(x=>x.id===l.id);if(i>=0)S.leads[i]=l;else S.leads.unshift(l);render()}
-async function refresh(){S=await api('state');render()}
-
-/* ---------- find / add ---------- */
-$('#bFind').onclick=e=>act(e.currentTarget,async()=>{
-  const r=await api('discover',{method:'POST',body:{city:$('#fCity').value,category:$('#fCat').value,mode:$('#fMode').value,radius:$('#fRad').value}});
-  await refresh();toast(`${r.found} found, ${r.added} new`);
-});
-$('#bAdd').onclick=e=>act(e.currentTarget,async()=>{
-  const r=await api('leads',{method:'POST',body:{name:$('#mName').value,email:$('#mEmail').value,website:$('#mSite').value}});
-  ['#mName','#mEmail','#mSite'].forEach(s=>$(s).value='');upd(r.lead);toast('Added');
-});
-
-/* ---------- bulk ---------- */
-async function bulk(btn,label,fn){
-  if(busyBulk)return;busyBulk=true;btn.disabled=true;
-  try{await fn(t=>$('#prog').textContent=t)}catch(e){toast(e.message,5000)}
-  finally{busyBulk=false;btn.disabled=false;$('#prog').textContent='';render()}
-}
-$('#bAud').onclick=e=>bulk(e.currentTarget,'',async p=>{
-  const ids=S.leads.filter(l=>l.website&&!l.audit).map(l=>l.id);
-  if(!ids.length){toast('Nothing to audit');return}
-  for(let i=0;i<ids.length;i+=4){
-    p(`Auditing ${Math.min(i+4,ids.length)}/${ids.length}…`);
-    const r=await api('audit',{method:'POST',body:{ids:ids.slice(i,i+4)}});r.leads.forEach(l=>{const k=S.leads.findIndex(x=>x.id===l.id);if(k>=0)S.leads[k]=l});
-  }
-  toast('Audit done');
-});
-$('#bDraftAll').onclick=e=>bulk(e.currentTarget,'',async p=>{
-  const ls=S.leads.filter(l=>validEmail(l.email)&&l.status==='new');
-  if(!ls.length){toast('No new leads with an email');return}
-  for(let i=0;i<ls.length;i++){
-    p(`Drafting ${i+1}/${ls.length}…`);
-    const r=await api('draft',{method:'POST',body:{id:ls[i].id}});const k=S.leads.findIndex(x=>x.id===r.lead.id);S.leads[k]=r.lead;
-    await sleep(2200); // stay under Groq free-tier rate limits
-  }
-  toast('Drafts ready. Review before sending.');
-});
-$('#bSendAll').onclick=e=>bulk(e.currentTarget,'',async p=>{
-  const ls=S.leads.filter(l=>l.status==='drafted'&&validEmail(l.email)&&l.draft);
-  if(!ls.length){toast('No drafted leads with an email');return}
-  const room=S.settings.dailyLimit-S.sentToday;
-  if(!confirm(`Send ${Math.min(ls.length,Math.max(room,0))} email(s) now? (${ls.length} drafted, ${Math.max(room,0)} left today)`))return;
-  let sent=0;
-  for(const l of ls){
-    if(sent>=room)break;
-    p(`Sending ${sent+1}…`);
-    const r=await api('send',{method:'POST',body:{id:l.id}});const k=S.leads.findIndex(x=>x.id===l.id);S.leads[k]=r.lead;S.sentToday++;sent++;
-    await sleep(1500);
-  }
-  toast(`Sent ${sent}`);
-});
-
-/* ---------- drawer ---------- */
-function drawer(){
-  const l=S.leads.find(x=>x.id===cur);if(!l){cur=null;$('#ov').innerHTML='';return}
-  const d=l.draft||{subject:'',body:''};
-  const keep={top:$('.drawer')?.scrollTop||0};
-  $('#ov').innerHTML=`<div class="scrim" id="sc"><div class="drawer">
-    <div class="dh"><div style="flex:1"><h2>${esc(l.name)}</h2><div class="sub">${esc([l.category,l.address,l.phone].filter(Boolean).join(' · '))}</div></div>${statusPill(l)}<button class="x" id="dx">×</button></div>
-
-    <div class="card sec stack"><h4>Contact</h4>
-      <div class="g2"><div><label>Email to approach</label><input id="dEmail" type="email" value="${esc(l.email)}" placeholder="owner@business.com"></div>
-      <div><label>Website</label><input id="dSite" value="${esc(l.website)}" placeholder="none"></div></div>
-      <div><label>Notes</label><input id="dNotes" value="${esc(l.notes)}" placeholder="Anything to remember"></div>
-      <div class="acts"><button class="btn s" id="dSave">Save contact</button>${l.website?'<button class="btn s" id="dAudit">Audit site</button>':''}</div>
-    </div>
-
-    ${l.audit?`<div class="card sec"><h4>Site audit · score ${l.audit.score}/100 (higher = weaker site)</h4>${l.audit.issues.length?'<ul class="iss">'+l.audit.issues.map(i=>`<li>${esc(i)}</li>`).join('')+'</ul>':'<span class="sub">No obvious problems found.</span>'}</div>`:''}
-
-    <div class="card sec stack"><h4>Email</h4>
-      <div><label>Subject</label><input id="dSub" value="${esc(d.subject)}"></div>
-      <div><label>Body (your signature, address and opt-out link are added automatically)</label><textarea id="dBody">${esc(d.body)}</textarea></div>
-      <div class="acts">
-        <button class="btn s" id="dGen">${l.draft?'Rewrite with AI':'Write with AI'}</button>
-        <button class="btn s" id="dTest">Send test to me</button>
-        <span class="sp"></span>
-        <button class="btn p" id="dSend">Send</button>
-      </div>
-    </div>
-
-    <div class="card sec stack"><h4>Pipeline</h4>
-      <div class="acts"><select id="dStat" style="width:auto">${['new','drafted','sent','replied','unsub','skip'].map(s=>`<option value="${s}" ${s===l.status?'selected':''}>${{new:'New',drafted:'Drafted',sent:'Sent',replied:'Replied',unsub:'Unsubscribed',skip:'Skipped'}[s]}</option>`).join('')}</select>
-      <span class="sp"></span><button class="btn s d" id="dDel">Delete lead</button></div>
-    </div>
-  </div></div>`;
-  $('.drawer').scrollTop=keep.top;
-  $('#sc').onclick=e=>{if(e.target.id==='sc'){cur=null;$('#ov').innerHTML=''}};
-  $('#dx').onclick=()=>{cur=null;$('#ov').innerHTML=''};
-  const draftNow=()=>({subject:$('#dSub').value,body:$('#dBody').value});
-  const saveDraft=async()=>{if(!$('#dSub').value&&!$('#dBody').value)return;const r=await api('leads/'+l.id,{method:'PATCH',body:{draft:draftNow()}});const k=S.leads.findIndex(x=>x.id===l.id);S.leads[k]=r.lead};
-  $('#dSave').onclick=e=>act(e.currentTarget,async()=>{const r=await api('leads/'+l.id,{method:'PATCH',body:{email:$('#dEmail').value,website:$('#dSite').value,notes:$('#dNotes').value}});upd(r.lead);toast('Saved')});
-  const au=$('#dAudit');if(au)au.onclick=e=>act(e.currentTarget,async()=>{await api('leads/'+l.id,{method:'PATCH',body:{website:$('#dSite').value}});const r=await api('audit',{method:'POST',body:{ids:[l.id]}});upd(r.leads[0]);toast('Audit done')});
-  $('#dGen').onclick=e=>act(e.currentTarget,async()=>{const r=await api('draft',{method:'POST',body:{id:l.id}});upd(r.lead)});
-  $('#dTest').onclick=e=>act(e.currentTarget,async()=>{await api('send',{method:'POST',body:{id:l.id,test:true,...draftNow()}});toast('Test sent to your reply-to address')});
-  $('#dSend').onclick=e=>act(e.currentTarget,async()=>{
-    await api('leads/'+l.id,{method:'PATCH',body:{email:$('#dEmail').value}});
-    if(!confirm('Send this email to '+$('#dEmail').value+'?'))return;
-    const r=await api('send',{method:'POST',body:{id:l.id,...draftNow()}});S.sentToday++;upd(r.lead);toast('Sent')});
-  $('#dStat').onchange=async e=>{const r=await api('leads/'+l.id,{method:'PATCH',body:{status:e.target.value}});upd(r.lead)};
-  $('#dDel').onclick=async()=>{if(!confirm('Delete this lead?'))return;await api('leads/'+l.id,{method:'DELETE'});S.leads=S.leads.filter(x=>x.id!==l.id);cur=null;$('#ov').innerHTML='';render()};
-  ['#dSub','#dBody'].forEach(s=>$(s).onchange=()=>saveDraft().catch(x=>toast(x.message)));
-}
-
-/* ---------- settings ---------- */
-$('#bSet').onclick=()=>{
-  const s=S.settings;
-  $('#ov').innerHTML=`<div class="scrim c" id="sc"><div class="card modal stack">
-    <div class="dh"><h2 style="flex:1">Settings</h2><button class="x" id="mx">×</button></div>
-    <div class="g2"><div><label>Your name</label><input id="sName" value="${esc(s.senderName)}"></div><div><label>Business name</label><input id="sBiz" value="${esc(s.businessName)}"></div></div>
-    <div><label>Mailing address (required in every email by law)</label><input id="sAddr" value="${esc(s.address)}" placeholder="Street, City, State ZIP"></div>
-    <div class="g2"><div><label>Reply-to / test email</label><input id="sReply" type="email" value="${esc(s.replyTo)}"></div><div><label>Max sends per day</label><input id="sLim" type="number" min="1" max="200" value="${esc(s.dailyLimit)}"></div></div>
-    <div><label>Your offer (fed to the AI writer)</label><textarea id="sOffer" style="min-height:80px">${esc(s.offer)}</textarea></div>
-    <div><label>Portfolio link (optional)</label><input id="sPort" value="${esc(s.portfolioUrl)}"></div>
-    <button class="btn p" id="sSave" style="width:100%;justify-content:center">Save settings</button>
-  </div></div>`;
-  $('#mx').onclick=()=>{$('#ov').innerHTML=''};
-  $('#sc').onclick=e=>{if(e.target.id==='sc')$('#ov').innerHTML=''};
-  $('#sSave').onclick=e=>act(e.currentTarget,async()=>{
-    const r=await api('settings',{method:'PUT',body:{senderName:$('#sName').value,businessName:$('#sBiz').value,address:$('#sAddr').value,replyTo:$('#sReply').value,dailyLimit:$('#sLim').value,offer:$('#sOffer').value,portfolioUrl:$('#sPort').value}});
-    S.settings=r.settings;$('#ov').innerHTML='';render();toast('Settings saved');
-  });
-};
-
-boot().catch(()=>{});
-</script>
+<script src="/app.js"></script>
+<script src="/leads.js"></script>
+<script src="/replies.js"></script>
+<script src="/assistant.js"></script>
 </body>
 </html>
