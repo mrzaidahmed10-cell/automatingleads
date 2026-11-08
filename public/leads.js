@@ -130,7 +130,15 @@ A.bulkDraft = (btn) => bulk(btn, async (p) => {
   if (!ls.length) return toast('No new leads with an email yet');
   for (let i = 0; i < ls.length; i++) {
     p(`Writing ${i + 1}/${ls.length}…`);
-    const r = await api('draft', { method: 'POST', body: { id: ls[i].id } }); setLead(r.lead);
+    let r;
+    for (let t = 0; t < 3; t++) {
+      try { r = await api('draft', { method: 'POST', body: { id: ls[i].id } }); break; }
+      catch (e) {
+        if (/rate limit/i.test(e.message) && t < 2) { p(`AI rate limit, waiting a moment (${i + 1}/${ls.length})…`); await sleep(20000); continue; }
+        throw e;
+      }
+    }
+    setLead(r.lead);
     await sleep(2300); // stay under Groq free-tier rate limits
   }
   toast('Drafts ready. Skim a few before sending.');
@@ -192,7 +200,7 @@ function drawer() {
     <div class="card sec stack"><h4>Email${d.angle ? ` · angle: ${esc(d.angle)}` : ''}</h4>
       <div><label>Subject</label><input id="dSub" data-change="saveDraft" value="${esc(d.subject)}">
         ${d.alts?.length ? `<div class="alts">${d.alts.map((a) => `<button class="chip" data-act="useAlt" data-v="${esc(a)}">${esc(a)}</button>`).join('')}</div>` : ''}</div>
-      <div><label>Body (your signature, address and unsubscribe link are added automatically)</label><textarea id="dBody" data-change="saveDraft">${esc(d.body)}</textarea></div>
+      <div><label>Body (plain text, sent exactly as written)</label><textarea id="dBody" data-change="saveDraft">${esc(d.body)}</textarea></div>
       <div class="acts">
         <select id="dTone" style="width:auto">${[['friendly', 'Friendly'], ['casual', 'Casual'], ['direct', 'Direct'], ['professional', 'Professional']].map(([v, t]) => `<option value="${v}" ${tone === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
         <button class="btn s" data-act="dGen">${ico('spark')} ${l.draft ? 'Rewrite' : 'Write with AI'}</button>

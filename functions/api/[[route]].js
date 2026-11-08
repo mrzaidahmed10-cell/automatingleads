@@ -1,7 +1,7 @@
-import { json, loadDB, saveDB, isEmail, today, unsubToken, DEFAULT_SETTINGS } from '../../lib/util.js';
+import { json, loadDB, saveDB, isEmail, today, DEFAULT_SETTINGS } from '../../lib/util.js';
 import { findBusinesses } from '../../lib/osm.js';
 import { auditSite } from '../../lib/audit.js';
-import { draftEmail, draftReply, runAgent, firstName } from '../../lib/ai.js';
+import { draftEmail, draftReply, runAgent, testAI } from '../../lib/ai.js';
 import { sendEmail, emailReady, renderEmail } from '../../lib/email.js';
 
 const EDITABLE = ['name', 'email', 'website', 'phone', 'notes', 'status', 'category', 'address', 'draft'];
@@ -50,6 +50,10 @@ export async function onRequest({ request, env, params }) {
     if (a === 'settings' && m === 'PUT') return await saveSettings(env, body);
     if (a === 'templates' && m === 'PUT') return await saveTemplates(env, body);
     if (a === 'chat' && m === 'POST') return await chat(env, body);
+    if (a === 'ai-test' && m === 'GET') {
+      if (!env.GROQ_API_KEY) return json({ ok: false, error: 'GROQ_API_KEY secret is not set (add it in Cloudflare, then redeploy).', models: [], chain: [] });
+      return json(await testAI(env));
+    }
     if (a === 'logout') return json({ ok: true }, 200, { 'set-cookie': 'ls=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0' });
   } catch (e) {
     return json({ error: e.message || String(e) }, 500);
@@ -206,7 +210,7 @@ async function replyDraft(env, p) {
 }
 
 /* ---------------- send ---------------- */
-async function send(env, request, p) {
+async function send(env, _request, p) {
   const db = await loadDB(env);
   const lead = db.leads[p.id];
   if (!lead) throw new Error('Lead not found.');
@@ -215,7 +219,6 @@ async function send(env, request, p) {
   const followup = !!p.followup && !test;
 
   if (!emailReady(env)) throw new Error('Email sending is not configured. Add the email secrets listed in the README.');
-  if (!s.senderName || !s.address) throw new Error('Open Settings and add your name and mailing address first (required by CAN-SPAM).');
 
   const subject = String(p.subject ?? lead.draft?.subject ?? '').trim();
   const text = String(p.body ?? lead.draft?.body ?? '').trim();
@@ -230,17 +233,13 @@ async function send(env, request, p) {
     to = assertSendable(db, lead, { followup });
   }
 
-  const origin = new URL(request.url).origin;
-  const unsubUrl = `${origin}/unsubscribe?e=${encodeURIComponent(to)}&t=${await unsubToken(env, to)}`;
-  const { text: fullText, html } = renderEmail(s, text, unsubUrl);
+  const { text: fullText } = renderEmail(s, text);
 
   await sendEmail(env, {
     to,
     subject: test ? '[TEST] ' + subject : subject,
     text: fullText,
-    html,
     replyTo: s.replyTo || undefined,
-    unsubUrl,
     fromName: s.senderName,
   });
 
@@ -322,7 +321,10 @@ function buildTools(env, db, pending) {
     if (!l) throw new Error('No lead with id ' + id);
     return l;
   };
-  const str = (d) => ({ type: 'string', description: d });
+  const str = (d) => ({ type: 'string', description: d || 'text' });
+  // Models sometimes send "true"/"5" as strings; coerce
+  const tb = (v) => (v == null || v === '' ? null : v === true || v === 'true' || v === 1);
+  const tn = (v) => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v));
   return {
     get_overview: {
       spec: { name: 'get_overview', description: 'Counts and status of the whole pipeline.', parameters: { type: 'object', properties: {} } },
@@ -346,16 +348,17 @@ function buildTools(env, db, pending) {
       },
       run: async (a) => {
         const q = String(a.query || '').toLowerCase();
+        const he = tb(a.has_email), hw = tb(a.has_website), ms = tn(a.min_score);
         let L = Object.values(db.leads).filter((l) => {
           if (q && !`${l.name} ${l.category} ${l.address}`.toLowerCase().includes(q)) return false;
           if (a.status && l.status !== a.status) return false;
-          if (a.has_email != null && isEmail(l.email) !== !!a.has_email) return false;
-          if (a.has_website != null && !!l.website !== !!a.has_website) return false;
-          if (a.min_score != null && (l.audit?.score ?? -1) < a.min_score) return false;
+          if (he != null && isEmail(l.email) !== he) return false;
+          if (hw != null && !!l.website !== hw) return false;
+          if (ms != null && (l.audit?.score ?? -1) < ms) return false;
           return true;
         });
         const total = L.length;
-        L = L.slice(0, Math.min(Number(a.limit) || 15, 30));
+        L = L.slice(0, Math.min(tn(a.limit) || 15, 30));
         return { total, shown: L.length, leads: L.map(compact) };
       },
     },
@@ -382,9 +385,18 @@ function buildTools(env, db, pending) {
         },
       },
       run: async (a) => {
-        const { items, debug } = await findBusinesses({ city: String(a.city), category: a.category || 'all', mode: a.mode === 'has_site' ? 'has_site' : 'none', radiusKm: Number(a.radius_km) || 15 });
+        const city = String(a.city || a.location || a.place || '').trim();
+        if (!city) throw new Error('Which city? Ask the user.');
+        const cats = ['all', 'restaurants', 'beauty', 'auto', 'fitness', 'trades', 'health', 'retail', 'offices'];
+        const { items, debug } = await findBusinesses({
+          city,
+          category: cats.includes(a.category) ? a.category : 'all',
+          mode: a.mode === 'has_site' ? 'has_site' : 'none',
+          radiusKm: tn(a.radius_km ?? a.radius) || 15,
+        });
         const { added, dupes } = mergeFound(db, items);
-        return { found: items.length, added, already_had: dupes, place: debug.place, note: `Added ${added} new leads near ${debug.place}.` };
+        const sample = items.slice(0, 8).map((i) => i.name);
+        return { found: items.length, added, already_had: dupes, place: debug.place, sample, note: `Added ${added} new leads near ${debug.place}.` };
       },
     },
     audit_leads: {

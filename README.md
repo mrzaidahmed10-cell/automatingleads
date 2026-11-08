@@ -9,7 +9,7 @@ Personal lead-finder and outreach dashboard for Cloudflare Pages.
 - **Quick replies:** reply and follow-up composer with editable templates and an AI that answers pasted replies and suggests next status.
 - **Analytics:** sends per day, reply rate, lead quality mix, which lead types and categories reply.
 - **Assistant:** a chat that can search leads, find new ones, audit sites, write drafts, edit leads, and queue emails. It never sends on its own; you approve each email with one click.
-- **Compliance built in:** every email gets your mailing address and a clickable Unsubscribe link (plus `List-Unsubscribe` headers). Unsubscribed addresses are blocked for good.
+- **Plain-text emails:** no footer links or tracking, so they read like normal one-to-one mail. Business name / address are optional signature lines, and there is an optional "just reply no thanks" line (off by default). Leads marked Unsubscribed are never emailed.
 
 ## Deploy
 
@@ -21,14 +21,13 @@ Personal lead-finder and outreach dashboard for Cloudflare Pages.
 | Name | Value |
 |---|---|
 | `DASH_PASSWORD` | Password for the dashboard |
-| `GROQ_API_KEY` | Your Groq key (the app picks the best model your key can use) |
+| `GROQ_API_KEY` | Your Groq key. The AI walks a chain of models, so a retired or rate-limited one is skipped automatically |
 | `EMAIL_PROVIDER` | `resend` (default), `sendgrid`, or `gmail` |
 | `EMAIL_API_KEY`, `EMAIL_FROM` | For Resend/SendGrid. `EMAIL_FROM` like `Zaid <zaid@yourdomain.com>` on a verified domain |
 | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | For `EMAIL_PROVIDER=gmail` (Gmail always sends as your account) |
 | `GROQ_MODEL` | optional, forces a specific Groq model |
-| `UNSUB_SECRET` | optional, random string for unsubscribe links (defaults to the dashboard password) |
 
-5. Redeploy (bindings and secrets apply on the next deployment), open the site, sign in, and fill **Settings** (name, mailing address, reply-to, your offer, and notes on pricing/process for the AI).
+5. Redeploy (bindings and secrets apply on the next deployment), open the site, sign in, and fill **Settings** (name, your email, your offer, and notes on pricing/process for the AI). Use **Settings → Test AI** to confirm Groq works and see which models your key can use.
 
 ## Notes
 

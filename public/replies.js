@@ -61,7 +61,7 @@ function renderComposer() {
     ${it ? `<div class="banner" style="background:var(--acc2);color:var(--acc);margin:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span><b>${it[0]}.</b> ${it[1] === 'replied' ? 'Mark as replied?' : it[1] === 'skip' ? 'Mark as skipped?' : 'Mark as unsubscribed so you never email them again?'}</span><button class="btn s" data-act="rMark" data-s="${it[1]}">Yes, mark it</button></div>` : ''}
     <div><label>Quick replies</label><div class="tpl">${S.templates.map((t) => `<button class="chip" data-act="rTpl" data-id="${esc(t.id)}">${esc(t.name)}</button>`).join('')}<button class="chip" data-act="tplEdit">${ico('edit')} Edit</button></div></div>
     <div><label>Subject</label><input id="rSub" value="${esc(d.subject)}"></div>
-    <div><label>Message (your signature, address and unsubscribe link are added automatically)</label><textarea id="rBody" style="min-height:190px">${esc(d.body)}</textarea></div>
+    <div><label>Message (plain text, sent exactly as written)</label><textarea id="rBody" style="min-height:190px">${esc(d.body)}</textarea></div>
     <div class="acts"><button class="btn s" data-act="rMark" data-s="replied">Mark replied</button><button class="btn s" data-act="rMark" data-s="skip">Not interested</button><span class="sp"></span><button class="btn p" data-act="rSend">${ico('send')} Send</button></div>
   </div>`;
   $('#rThem').oninput = () => { rdFor(l.id).their = $('#rThem').value; };

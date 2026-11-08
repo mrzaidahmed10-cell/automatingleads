@@ -227,7 +227,7 @@ function vDash() {
   const hr = new Date().getHours(), greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
   const lim = Number(s.settings?.dailyLimit || s.dailyLimit || 20);
   const setup = [
-    ['Add your name and mailing address', !!(s.senderName && s.address), 'settings'],
+    ['Add your name', !!s.senderName, 'settings'],
     ['Connect email sending', !!S.configured.email, 'settings'],
     ['Connect the AI writer (Groq)', !!S.configured.groq, 'settings'],
     ['Find your first leads', L.length > 0, 'leads'],
@@ -326,10 +326,11 @@ function vSettings() {
   $('#view').innerHTML = `
     <div class="grid g2" style="align-items:start">
       <div class="stack">
-        <div class="card pad stack"><h3>You and your business</h3><div class="hint">Shown at the bottom of every email. A mailing address is required by law (CAN-SPAM).</div>
-          <div class="grid g2">${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}${field('sBiz', 'Business name', s.businessName)}</div>
-          ${field('sAddr', 'Mailing address', s.address, 'Street, City, State ZIP')}
-          <div class="grid g2">${field('sReply', 'Reply-to / test email', s.replyTo, '', 'email')}${field('sLim', 'Max sends per day', s.dailyLimit, '', 'number')}</div>
+        <div class="card pad stack"><h3>You and your business</h3><div class="hint">Your name is the sender name. Business name and address are optional and, if filled, go under your sign-off as plain text.</div>
+          <div class="grid g2">${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}${field('sBiz', 'Business name (optional)', s.businessName)}</div>
+          ${field('sAddr', 'Mailing address (optional)', s.address, 'Street, City, State ZIP')}
+          <div class="grid g2">${field('sReply', 'Your email (reply-to and test sends)', s.replyTo, 'your Gmail address', 'email')}${field('sLim', 'Max sends per day', s.dailyLimit, '', 'number')}</div>
+          <div><label>Opt-out line at the bottom of emails</label><select id="sOpt"><option value="" ${s.optOutLine !== 'on' ? 'selected' : ''}>Off</option><option value="on" ${s.optOutLine === 'on' ? 'selected' : ''}>On: a plain "just reply no thanks" sentence (no link)</option></select></div>
         </div>
         <div class="card pad stack"><h3>AI voice</h3><div class="hint">The writer uses these to sound like you and stay accurate.</div>
           <div><label>Tone</label><select id="sTone">${[['friendly', 'Friendly (default)'], ['casual', 'Casual and short'], ['direct', 'Direct'], ['professional', 'Professional']].map(([v, t]) => `<option value="${v}" ${s.tone === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -345,6 +346,8 @@ function vSettings() {
           <div class="check ${cf.email ? 'done' : ''}"><span class="dot">${cf.email ? ico('check') : ''}</span><span>Email sending ${cf.email ? '' : '(missing secrets, see README)'}</span></div>
           <div class="check ${cf.groq ? 'done' : ''}"><span class="dot">${cf.groq ? ico('check') : ''}</span><span>AI writer ${cf.groq ? '' : '(add GROQ_API_KEY)'}</span></div>
           <div class="check done"><span class="dot">${ico('check')}</span><span>Lead finder (OpenStreetMap, no key needed)</span></div>
+          <div class="acts" style="margin-top:10px"><button class="btn s" data-act="testAI">${ico('spark')} Test AI</button></div>
+          <div id="aiTest" class="hint" style="margin-top:8px"></div>
           <div class="hint" style="margin-top:10px">API keys live in Cloudflare secrets and never reach this page.</div>
         </div>
         <div class="card pad"><h3>Tips for better replies</h3>
@@ -353,7 +356,15 @@ function vSettings() {
       </div>
     </div>`;
 }
+A.testAI = (btn) => act(btn, async () => {
+  const el = $('#aiTest'); el.textContent = 'Testing…';
+  const r = await api('ai-test');
+  const models = (r.models || []).filter((m) => !/whisper|guard|tts|playai|orpheus|safeguard|compound/i.test(m));
+  el.innerHTML = r.ok
+    ? `<span style="color:var(--ok)"><b>AI works.</b></span> Using <b>${esc(r.model)}</b>. Tool use (assistant actions): ${r.tools ? '<b style="color:var(--ok)">works</b>' : '<b style="color:var(--bad)">not working</b>' + (r.toolsError ? ' (' + esc(r.toolsError) + ')' : '')}.<br>Models your key can use: ${esc(models.join(', ') || 'unknown')}`
+    : `<span style="color:var(--bad)"><b>AI failed:</b> ${esc(r.error || 'unknown error')}</span>${models.length ? '<br>Models your key can use: ' + esc(models.join(', ')) : ''}`;
+});
 A.saveSettings = (btn) => act(btn, async () => {
-  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, businessName: $('#sBiz').value, address: $('#sAddr').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value } });
+  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, businessName: $('#sBiz').value, address: $('#sAddr').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, optOutLine: $('#sOpt').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value } });
   S.settings = r.settings; chrome(); toast('Settings saved');
 });
