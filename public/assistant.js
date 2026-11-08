@@ -76,7 +76,7 @@ A.pApproveAll = (btn) => act(btn, async () => {
   for (let pi = 0; pi < ui.chat[mi].pending.length; pi++) {
     if (ui.chat[mi].pending[pi].state !== 'new') continue;
     try { if (await approve(mi, pi)) n++; } catch (e) { toast(e.message, 5200); break; }
-    await sleep(1500);
+    await jitter(15, 40);
   }
   store.set('chat', ui.chat.slice(-40)); chrome(); renderMsgs(); if (n) toast(`Sent ${n}`);
 });

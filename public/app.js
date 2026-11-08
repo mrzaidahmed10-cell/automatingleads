@@ -3,6 +3,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const jitter = (a, b) => sleep((a + Math.random() * (b - a)) * 1000); // irregular gaps between sends look human
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e || '');
 const firstName = (n) => String(n || '').trim().split(/\s+/)[0] || '';
 const store = {
@@ -272,7 +273,7 @@ function vDash() {
       <div class="card kpi"><div class="ic">${ico('send')}</div><b>${cont}</b><span>Emailed</span><small>${S.sentToday} / ${lim} today</small></div>
       <div class="card kpi"><div class="ic">${ico('reply')}</div><b>${rep}</b><span>Replies</span><small>${cont ? Math.round((rep / cont) * 100) + '% reply rate' : 'no sends yet'}</small></div>
       <div class="card kpi"><div class="ic">${ico('edit')}</div><b>${n((l) => l.status === 'drafted')}</b><span>Drafts waiting</span><small>${due} follow-ups due</small></div>
-      <div class="card kpi"><div class="ic">${ico('mail')}</div><b>${S.suppressed}</b><span>Opted out</span><small>never emailed again</small></div>
+      <div class="card kpi"><div class="ic">${ico('mail')}</div><b>${S.suppressed}</b><span>Do not contact</span><small>never emailed again</small></div>
     </div>
     ${todos.length ? `<div class="grid g2" style="margin-bottom:16px">${todos.slice(0, 4).map((t) => `<button class="todo" data-act="go" data-to="${t.to}" ${t.filter ? `data-filter="${t.filter}"` : ''} ${t.rf ? `data-rf="${t.rf}"` : ''}><div class="n">${esc(t.n)}</div><div><b>${esc(t.t)}</b><span>${esc(t.d)}</span></div></button>`).join('')}</div>` : ''}
     <div class="grid g2" style="margin-bottom:16px">
@@ -326,11 +327,9 @@ function vSettings() {
   $('#view').innerHTML = `
     <div class="grid g2" style="align-items:start">
       <div class="stack">
-        <div class="card pad stack"><h3>You and your business</h3><div class="hint">Your name is the sender name. Business name and address are optional and, if filled, go under your sign-off as plain text.</div>
-          <div class="grid g2">${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}${field('sBiz', 'Business name (optional)', s.businessName)}</div>
-          ${field('sAddr', 'Mailing address (optional)', s.address, 'Street, City, State ZIP')}
+        <div class="card pad stack"><h3>You</h3><div class="hint">Your name is the sender name. Emails go out as plain text, exactly as you write them, with nothing added.</div>
+          ${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}
           <div class="grid g2">${field('sReply', 'Your email (reply-to and test sends)', s.replyTo, 'your Gmail address', 'email')}${field('sLim', 'Max sends per day', s.dailyLimit, '', 'number')}</div>
-          <div><label>Opt-out line at the bottom of emails</label><select id="sOpt"><option value="" ${s.optOutLine !== 'on' ? 'selected' : ''}>Off</option><option value="on" ${s.optOutLine === 'on' ? 'selected' : ''}>On: a plain "just reply no thanks" sentence (no link)</option></select></div>
         </div>
         <div class="card pad stack"><h3>AI voice</h3><div class="hint">The writer uses these to sound like you and stay accurate.</div>
           <div><label>Tone</label><select id="sTone">${[['friendly', 'Friendly (default)'], ['casual', 'Casual and short'], ['direct', 'Direct'], ['professional', 'Professional']].map(([v, t]) => `<option value="${v}" ${s.tone === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -365,6 +364,6 @@ A.testAI = (btn) => act(btn, async () => {
     : `<span style="color:var(--bad)"><b>AI failed:</b> ${esc(r.error || 'unknown error')}</span>${models.length ? '<br>Models your key can use: ' + esc(models.join(', ')) : ''}`;
 });
 A.saveSettings = (btn) => act(btn, async () => {
-  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, businessName: $('#sBiz').value, address: $('#sAddr').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, optOutLine: $('#sOpt').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value } });
+  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value } });
   S.settings = r.settings; chrome(); toast('Settings saved');
 });

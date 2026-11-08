@@ -23,7 +23,7 @@ const siteCell = (l) => {
   return a + `<br><span class="pill ${c}">${sc >= 50 ? 'Poor' : sc >= 25 ? 'Dated' : 'Decent'} · ${sc}</span>`;
 };
 const statusPill = (l) => {
-  const m = { new: ['New', ''], drafted: ['Drafted', 'acc'], sent: ['Sent', 'ok'], replied: ['Replied', 'ok'], unsub: ['Unsubscribed', 'bad'], skip: ['Skipped', ''] }[l.status] || ['New', ''];
+  const m = { new: ['New', ''], drafted: ['Drafted', 'acc'], sent: ['Sent', 'ok'], replied: ['Replied', 'ok'], unsub: ['Do not contact', 'bad'], skip: ['Skipped', ''] }[l.status] || ['New', ''];
   return `<span class="pill ${m[1]}">${m[0]}</span>`;
 };
 
@@ -148,12 +148,12 @@ A.bulkSend = (btn) => bulk(btn, async (p) => {
   if (!ls.length) return toast('No drafted leads with an email');
   const room = Math.max(Number(S.settings.dailyLimit) - S.sentToday, 0), n = Math.min(ls.length, room);
   if (!n) return toast('Daily limit reached. Raise it in Settings or wait until tomorrow.');
-  if (!confirm(`Send ${n} email${n === 1 ? '' : 's'} now? (${ls.length} drafted, ${room} left today)`)) return;
+  if (!confirm(`Send ${n} email${n === 1 ? '' : 's'}? (${ls.length} drafted, ${room} left today)\n\nThey go out one at a time, 15 to 40 seconds apart, so keep this tab open.`)) return;
   let sent = 0;
   for (const l of ls.slice(0, n)) {
     p(`Sending ${sent + 1}/${n}…`);
     const r = await api('send', { method: 'POST', body: { id: l.id } }); setLead(r.lead); S.sentToday++; sent++;
-    await sleep(1500);
+    if (sent < n) { p(`Sent ${sent}/${n}. Pausing before the next one…`); await jitter(15, 40); }
   }
   toast(`Sent ${sent}`);
 });
@@ -184,7 +184,7 @@ function drawer() {
   const l = curLead(); if (!l) { closeOv(); return; }
   const d = l.draft || { subject: '', body: '' }, top = $('.drawer')?.scrollTop || 0;
   const tone = S.settings.tone || 'friendly';
-  const STAT = { new: 'New', drafted: 'Drafted', sent: 'Sent', replied: 'Replied', unsub: 'Unsubscribed', skip: 'Skipped' };
+  const STAT = { new: 'New', drafted: 'Drafted', sent: 'Sent', replied: 'Replied', unsub: 'Do not contact', skip: 'Skipped' };
   $('#ov').innerHTML = `<div class="scrim" data-act="closeBg"><div class="drawer">
     <div class="dh"><div style="flex:1"><h2>${esc(l.name)}</h2><div class="sub">${esc([l.category, l.address, l.phone].filter(Boolean).join(' · '))}</div></div>${statusPill(l)}<button class="x" data-act="closeOv">×</button></div>
 

@@ -9,7 +9,7 @@ Personal lead-finder and outreach dashboard for Cloudflare Pages.
 - **Quick replies:** reply and follow-up composer with editable templates and an AI that answers pasted replies and suggests next status.
 - **Analytics:** sends per day, reply rate, lead quality mix, which lead types and categories reply.
 - **Assistant:** a chat that can search leads, find new ones, audit sites, write drafts, edit leads, and queue emails. It never sends on its own; you approve each email with one click.
-- **Plain-text emails:** no footer links or tracking, so they read like normal one-to-one mail. Business name / address are optional signature lines, and there is an optional "just reply no thanks" line (off by default). Leads marked Unsubscribed are never emailed.
+- **Plain-text emails:** sent exactly as you write them. No footer, no unsubscribe link or headers, no tracking, no HTML. Bulk sends go out 15-40 seconds apart. Leads marked "Do not contact" are never emailed.
 
 ## Deploy
 
