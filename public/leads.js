@@ -50,14 +50,14 @@ function vLeads() {
       <div id="findres"></div>
     </div>
     <div class="card" style="margin-top:16px">
-      <div class="tools"><div class="chips" id="chips"></div><div class="sp"></div><input id="q" placeholder="Search leads…" style="max-width:220px" value="${esc(ui.query)}"></div>
+      <div class="tools"><div class="chips" id="chips"></div><div class="sp"></div><input id="q" aria-label="Search leads" placeholder="Search leads…" style="max-width:220px" value="${esc(ui.query)}"></div>
       <div class="tools">
         <button class="btn s" data-act="bulkAudit">Audit sites</button>
         <button class="btn s" data-act="bulkDraft">Draft for all with email</button>
         <button class="btn s p" data-act="bulkSend">${ico('send')} Send all drafted</button>
         <span class="hint" id="prog"></span>
       </div>
-      <div class="tw"><table><thead><tr><th>Business</th><th>Website</th><th>Email</th><th>Status</th></tr></thead><tbody id="tb"></tbody></table></div>
+      <div class="tw"><table class="rt"><thead><tr><th>Business</th><th>Website</th><th>Email</th><th>Status</th></tr></thead><tbody id="tb"></tbody></table></div>
       <div class="empty hide" id="empty"></div>
     </div>`;
   $('#q').oninput = (e) => { ui.query = e.target.value; renderLeadsTable(); };
@@ -85,10 +85,10 @@ function renderLeadsTable() {
     empty.classList.remove('hide');
     empty.innerHTML = S.leads.length ? '<b>No leads match</b>Try a different filter or search.' : '<b>No leads yet</b>Use the finder above to search a city, or add a lead by hand.';
   } else empty.classList.add('hide');
-  tb.innerHTML = rows.map((l) => `<tr class="lead" data-act="openLead" data-id="${esc(l.id)}">
+  tb.innerHTML = rows.map((l) => `<tr class="lead" tabindex="0" role="button" aria-label="Open ${esc(l.name)}" data-act="openLead" data-id="${esc(l.id)}">
     <td><div class="nm">${esc(l.name)}</div><div class="sub">${esc([l.category, l.address || l.phone].filter(Boolean).join(' · '))}</div></td>
     <td>${siteCell(l)}</td>
-    <td><input class="em" type="email" data-change="rowEmail" data-id="${esc(l.id)}" placeholder="add email" value="${esc(l.email)}"></td>
+    <td><input class="em" type="email" data-change="rowEmail" aria-label="Email for ${esc(l.name)}" data-id="${esc(l.id)}" placeholder="add email" value="${esc(l.email)}"></td>
     <td>${statusPill(l)}</td></tr>`).join('');
 }
 A.setFilter = (t) => { ui.filter = t.dataset.f; renderLeadsTable(); };
@@ -161,7 +161,7 @@ A.bulkSend = (btn) => bulk(btn, async (p) => {
 /* ---------- add lead ---------- */
 A.addLeadModal = () => {
   $('#ov').innerHTML = `<div class="scrim c" data-act="closeBg"><div class="card modal stack">
-    <div class="dh"><h2 style="flex:1">Add a lead</h2><button class="x" data-act="closeOv">×</button></div>
+    <div class="dh"><h2 style="flex:1">Add a lead</h2><button class="x" data-act="closeOv" aria-label="Close">×</button></div>
     <div><label>Business name</label><input id="mName" autofocus></div>
     <div><label>Email to approach</label><input id="mEmail" type="email" placeholder="owner@business.com"></div>
     <div class="row"><div><label>Website (optional)</label><input id="mSite"></div><div><label>Phone (optional)</label><input id="mPhone"></div></div>
@@ -186,7 +186,7 @@ function drawer() {
   const tone = S.settings.tone || 'friendly';
   const STAT = { new: 'New', drafted: 'Drafted', sent: 'Sent', replied: 'Replied', unsub: 'Do not contact', skip: 'Skipped' };
   $('#ov').innerHTML = `<div class="scrim" data-act="closeBg"><div class="drawer">
-    <div class="dh"><div style="flex:1"><h2>${esc(l.name)}</h2><div class="sub">${esc([l.category, l.address, l.phone].filter(Boolean).join(' · '))}</div></div>${statusPill(l)}<button class="x" data-act="closeOv">×</button></div>
+    <div class="dh"><div style="flex:1"><h2>${esc(l.name)}</h2><div class="sub">${esc([l.category, l.address, l.phone].filter(Boolean).join(' · '))}</div></div>${statusPill(l)}<button class="x" data-act="closeOv" aria-label="Close">×</button></div>
 
     <div class="card sec stack"><h4>Contact</h4>
       <div class="grid g2"><div><label>Email to approach</label><input id="dEmail" type="email" value="${esc(l.email)}" placeholder="owner@business.com"></div>

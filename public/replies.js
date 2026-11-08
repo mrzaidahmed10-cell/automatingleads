@@ -107,7 +107,7 @@ A.tplEdit = () => { syncR(); ui.tpl = S.templates.map((t) => ({ ...t })); tplMod
 function tplSync() { (ui.tpl || []).forEach((t, i) => { const n = $('#tn' + i), b = $('#tb' + i); if (n) t.name = n.value; if (b) t.body = b.value; }); }
 function tplModal() {
   $('#ov').innerHTML = `<div class="scrim c" data-act="closeBg"><div class="card modal stack" style="width:min(640px,calc(100% - 24px))">
-    <div class="dh"><div style="flex:1"><h2>Quick reply templates</h2><div class="hint">Use {{business}}, {{contact}} and {{sender}}. Anything in [brackets] is a blank you fill in before sending.</div></div><button class="x" data-act="closeOv">×</button></div>
+    <div class="dh"><div style="flex:1"><h2>Quick reply templates</h2><div class="hint">Use {{business}}, {{contact}} and {{sender}}. Anything in [brackets] is a blank you fill in before sending.</div></div><button class="x" data-act="closeOv" aria-label="Close">×</button></div>
     ${ui.tpl.map((t, i) => `<div class="card sec stack" style="margin:0"><div style="display:flex;gap:8px"><input id="tn${i}" value="${esc(t.name)}" placeholder="Template name"><button class="btn s d" data-act="tplDel" data-i="${i}">Delete</button></div><textarea id="tb${i}" style="min-height:120px">${esc(t.body)}</textarea></div>`).join('')}
     <div class="acts"><button class="btn s" data-act="tplAdd">+ New template</button><span class="sp"></span><button class="btn p" data-act="tplSave">Save templates</button></div></div></div>`;
 }

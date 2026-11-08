@@ -7,7 +7,7 @@ function vAssistant() {
   $('#view').innerHTML = `<div class="card chatwrap">
     <div class="tools"><b>Assistant</b><span class="hint hm">Ask anything. It can find leads, audit sites, write drafts and queue emails for your approval.</span><span class="sp"></span><button class="btn s" data-act="chatClear">New chat</button></div>
     <div class="msgs" id="msgs"></div>
-    <div class="compose"><textarea id="cIn" rows="1" placeholder="Message the assistant…"></textarea><button class="btn p" data-act="chatSend">${ico('send')}</button></div>
+    <div class="compose"><textarea id="cIn" aria-label="Message the assistant" rows="1" placeholder="Message the assistant…"></textarea><button class="btn p" data-act="chatSend" aria-label="Send">${ico('send')}</button></div>
   </div>`;
   const ta = $('#cIn');
   ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); } });

@@ -1,22 +1,58 @@
-import { json, getCookie, hmacHex, safeEqual } from '../lib/util.js';
+import { json, getCookie, checkSession, COOKIE } from '../lib/util.js';
 
-// Everything under /api/ (except login) requires the signed session cookie.
+const CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "font-src 'self'",
+  "manifest-src 'self'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+const SECURITY_HEADERS = {
+  'content-security-policy': CSP,
+  'strict-transport-security': 'max-age=63072000; includeSubDomains; preload',
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'no-referrer',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+  'cross-origin-opener-policy': 'same-origin',
+  'cross-origin-resource-policy': 'same-origin',
+  'x-robots-tag': 'noindex, nofollow, noarchive',
+};
+
+const harden = (res) => {
+  const h = new Headers(res.headers);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) h.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+};
+
 export async function onRequest({ request, env, next }) {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith('/api/') || url.pathname === '/api/login') return next();
+  if (!url.pathname.startsWith('/api/')) return harden(await next());
+
+  const method = request.method;
+  if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return harden(json({ error: 'method not allowed' }, 405));
+
+  // CSRF: writes must come from this site (Origin) and carry a custom header a cross-site page cannot send
+  if (method !== 'GET') {
+    let sameOrigin = false;
+    try {
+      sameOrigin = new URL(request.headers.get('origin') || '').host === url.host;
+    } catch {}
+    if (!sameOrigin || request.headers.get('x-requested-by') !== 'flightline') return harden(json({ error: 'forbidden' }, 403));
+    if (Number(request.headers.get('content-length') || 0) > 300000) return harden(json({ error: 'request too large' }, 413));
+  }
+
+  if (url.pathname === '/api/login') return harden(await next());
 
   if (!env.DASH_PASSWORD || !env.LEADS) {
-    return json({ error: 'Not configured: add the DASH_PASSWORD secret and bind a KV namespace named LEADS.' }, 500);
+    return harden(json({ error: 'Not configured: add the DASH_PASSWORD secret and bind a KV namespace named LEADS.' }, 500));
   }
-
-  // Block cross-site writes
-  const origin = request.headers.get('origin');
-  if (request.method !== 'GET' && origin && new URL(origin).host !== url.host) {
-    return json({ error: 'forbidden' }, 403);
-  }
-
-  const token = getCookie(request, 'ls');
-  const expected = await hmacHex(env.DASH_PASSWORD, 'leads-session-v1');
-  if (!token || !safeEqual(token, expected)) return json({ error: 'unauthorized' }, 401);
-  return next();
+  if (!(await checkSession(env, getCookie(request, COOKIE)))) return harden(json({ error: 'unauthorized' }, 401));
+  return harden(await next());
 }

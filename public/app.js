@@ -33,6 +33,10 @@ const IC = {
   moon: '<path d="M21 13A9 9 0 1111 3a7 7 0 0010 10z"/>',
   mapPin: '<path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  rows: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  out: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
+  shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
   reply: '<path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 00-4-4H4"/>',
 };
 const ico = (k) => `<svg class="i" viewBox="0 0 24 24">${IC[k] || ''}</svg>`;
@@ -44,6 +48,7 @@ const A = {}; // click actions
 const C = {}; // change actions
 
 /* ---------- api ---------- */
+const HDR = { 'content-type': 'application/json', 'x-requested-by': 'flightline' };
 function toast(m, ms = 3200) {
   const t = $('#toast');
   t.textContent = m; t.classList.add('on');
@@ -52,7 +57,7 @@ function toast(m, ms = 3200) {
 async function api(path, opt = {}) {
   let r;
   try {
-    r = await fetch('/api/' + path, { method: opt.method || 'GET', headers: { 'content-type': 'application/json' }, body: opt.body ? JSON.stringify(opt.body) : undefined, credentials: 'same-origin' });
+    r = await fetch('/api/' + path, { method: opt.method || 'GET', headers: HDR, body: opt.body ? JSON.stringify(opt.body) : undefined, credentials: 'same-origin' });
   } catch { throw new Error('Network error. Check your connection.'); }
   if (r.status === 401) { showLogin(); throw new Error('Signed out'); }
   const j = await r.json().catch(() => ({}));
@@ -68,28 +73,38 @@ const setLead = (l) => { const i = S.leads.findIndex((x) => x.id === l.id); if (
 async function refresh() { S = await api('state'); refreshUI(); }
 
 /* ---------- auth ---------- */
-function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); $('#ov').innerHTML = ''; }
+function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); $('#ov').innerHTML = ''; S = { leads: [], settings: {}, templates: [], sentToday: 0, suppressed: 0, configured: {} }; setTimeout(() => $('#pw').focus(), 30); }
 $('#lf').onsubmit = async (e) => {
   e.preventDefault(); $('#le').textContent = '';
-  const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: $('#pw').value }) });
+  let r; try { r = await fetch('/api/login', { method: 'POST', headers: HDR, credentials: 'same-origin', body: JSON.stringify({ password: $('#pw').value }) }); } catch { $('#le').textContent = 'Network error.'; return; }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { $('#le').textContent = j.error || 'Login failed'; return; }
   $('#pw').value = ''; boot();
 };
-$('#bOut').onclick = async () => { await fetch('/api/logout', { credentials: 'same-origin' }); showLogin(); };
+$('#bOut').onclick = async () => { try { await fetch('/api/logout', { method: 'POST', headers: HDR, credentials: 'same-origin' }); } catch {} showLogin(); };
 
-/* ---------- theme ---------- */
+/* ---------- theme + density ---------- */
 function themeIcon() {
   const dark = document.documentElement.dataset.theme === 'dark';
-  $('#bTheme').innerHTML = (dark ? ico('sun') : ico('moon')) + (dark ? ' Light' : ' Dark');
   $('#bThemeM').innerHTML = dark ? ico('sun') : ico('moon');
+  $('#bThemeM').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  const comfy = document.documentElement.dataset.density === 'comfy';
+  $('#bDens').innerHTML = ico('rows') + '<span class="hm">' + (comfy ? 'Comfy' : 'Compact') + '</span>';
+  $('#bDens').setAttribute('aria-label', comfy ? 'Density: comfy. Switch to compact' : 'Density: compact. Switch to comfy');
+  $('#bPal').innerHTML = ico('search') + '<span class="hm">Jump <kbd>Ctrl K</kbd></span>';
+  $('#bOut').querySelector('.bi').innerHTML = ico('out');
 }
 function toggleTheme() {
   const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   document.documentElement.dataset.theme = t; try { localStorage.setItem('theme', t); } catch {}
   themeIcon();
 }
-$('#bTheme').onclick = toggleTheme; $('#bThemeM').onclick = toggleTheme;
+A.density = () => {
+  const d = document.documentElement.dataset.density === 'comfy' ? 'compact' : 'comfy';
+  document.documentElement.dataset.density = d; try { localStorage.setItem('density', d); } catch {}
+  themeIcon();
+};
+$('#bThemeM').onclick = toggleTheme;
 
 /* ---------- routing ---------- */
 const ROUTES = {
@@ -103,20 +118,22 @@ const ROUTES = {
 const page = () => { const k = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0]; return ROUTES[k] ? k : 'dashboard'; };
 function route() {
   const k = page();
-  $('#title').textContent = ROUTES[k][0];
+  $('#title').textContent = ROUTES[k][0]; document.title = ROUTES[k][0] + ' · FlightLine';
   $('#view').innerHTML = '';
   ROUTES[k][1]();
   chrome(); window.scrollTo(0, 0);
+  if (route.n++) $('#view').focus({ preventScroll: true });
 }
+route.n = 0;
 window.addEventListener('hashchange', route);
 function go(to, extra) { if (extra) Object.assign(ui, extra); if (location.hash === '#/' + to) route(); else location.hash = '#/' + to; }
 function chrome() {
   const k = page(), L = S.leads;
   const badge = { replies: L.filter((l) => l.status === 'replied').length };
   const items = Object.entries(ROUTES).map(([key, [label, , ic]]) =>
-    `<a href="#/${key}" class="${k === key ? 'on' : ''}">${ico(ic)}<span>${label.replace('Quick replies', 'Replies')}</span>${badge[key] ? `<span class="badge">${badge[key]}</span>` : ''}</a>`).join('');
+    `<a href="#/${key}" class="${k === key ? 'on' : ''}" ${k === key ? 'aria-current="page"' : ''}>${ico(ic)}<span class="t">${label.replace('Quick replies', 'Replies')}</span>${badge[key] ? `<span class="badge">${badge[key]}</span>` : ''}</a>`).join('');
   $('#nav').innerHTML = items;
-  $('#tabbar').innerHTML = Object.entries(ROUTES).map(([key, [label, , ic]]) => `<a href="#/${key}" class="${k === key ? 'on' : ''}">${ico(ic)}${label.replace('Quick replies', 'Replies')}</a>`).join('');
+  $('#tabbar').innerHTML = Object.entries(ROUTES).map(([key, [label, , ic]]) => `<a href="#/${key}" class="${k === key ? 'on' : ''}" ${k === key ? 'aria-current="page"' : ''}>${ico(ic)}${label.replace('Quick replies', 'Replies')}${badge[key] ? `<span class="badge">${badge[key]}</span>` : ''}</a>`).join('');
   const lim = Number(S.settings.dailyLimit || 20);
   $('#qTxt').textContent = `${S.sentToday} / ${lim} sent today`;
   $('#qBar').style.width = Math.min(100, (S.sentToday / lim) * 100) + '%';
@@ -130,7 +147,6 @@ function refreshUI() {
   else if (k === 'leads') renderLeadsTable(); else if (k === 'replies') renderReplyList();
 }
 async function boot() {
-  document.querySelectorAll('.lg,#logoI').forEach((e) => (e.innerHTML = `<svg class="i" viewBox="0 0 24 24" style="stroke:#fff">${IC.spark}</svg>`));
   try { S = await api('state'); } catch (e) {
     if (e.message !== 'Signed out') { showLogin(); $('#le').textContent = e.message; }
     return;
@@ -168,7 +184,8 @@ function lineChart(labels, series, h = 230) {
     g += `<polyline points="${pts.join(' ')}" style="fill:none;stroke:${s.color};stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round"/>`;
     s.values.forEach((v, i) => { if (v > 0) g += `<circle cx="${x(i)}" cy="${y(v)}" r="3.4" style="fill:${s.color}"><title>${esc(s.name)}: ${v} (${esc(labels[i])})</title></circle>`; });
   });
-  return `<svg class="chart" viewBox="0 0 ${W} ${h}">${g}</svg>` + legendHtml(series);
+  const sum = series.map((x) => `${x.name} total ${x.values.reduce((a, b) => a + b, 0)}`).join(', ');
+  return `<svg class="chart" viewBox="0 0 ${W} ${h}" role="img" aria-label="Line chart over ${labels.length} days. ${esc(sum)}">${g}</svg>` + legendHtml(series);
 }
 function barChart(labels, values, color = 'var(--c1)', h = 190) {
   const W = 680, pl = 30, pr = 6, pt = 10, pb = 24;
@@ -182,7 +199,7 @@ function barChart(labels, values, color = 'var(--c1)', h = 190) {
     g += `<rect x="${x}" y="${y(v)}" width="${w}" height="${Math.max(0, y(0) - y(v))}" rx="4" style="fill:${color}"><title>${v} on ${esc(labels[i])}</title></rect>`;
     if (i % step === 0) g += `<text x="${x + w / 2}" y="${h - 6}" text-anchor="middle">${esc(labels[i])}</text>`;
   });
-  return `<svg class="chart" viewBox="0 0 ${W} ${h}">${g}</svg>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${h}" role="img" aria-label="Bar chart, ${values.reduce((a, b) => a + b, 0)} total over ${labels.length} days">${g}</svg>`;
 }
 function donut(data) {
   const total = data.reduce((a, d) => a + d.value, 0);
@@ -193,7 +210,7 @@ function donut(data) {
     arcs += `<circle cx="70" cy="70" r="${r}" fill="none" stroke-width="22" style="stroke:${d.color}" stroke-dasharray="${len} ${C2 - len}" stroke-dashoffset="${-off}" transform="rotate(-90 70 70)"><title>${esc(d.label)}: ${d.value}</title></circle>`;
     off += len;
   });
-  return `<div class="donutwrap"><svg width="140" height="140" viewBox="0 0 140 140">${arcs}<text x="70" y="68" text-anchor="middle" style="fill:var(--ink);font-size:22px;font-weight:800">${total}</text><text x="70" y="86" text-anchor="middle" style="fill:var(--mut);font-size:11px">leads</text></svg>` +
+  return `<div class="donutwrap"><svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-label="Breakdown: ${esc(data.map((d) => d.label + ' ' + d.value).join(', '))}">${arcs}<text x="70" y="68" text-anchor="middle" style="fill:var(--ink);font-size:22px;font-weight:800">${total}</text><text x="70" y="86" text-anchor="middle" style="fill:var(--mut);font-size:11px">leads</text></svg>` +
     `<ul>${data.map((d) => `<li><i style="background:${d.color}"></i>${esc(d.label)} <b>${d.value}</b></li>`).join('')}</ul></div>`;
 }
 function hbars(data) {
@@ -266,7 +283,8 @@ function vDash() {
 
   $('#view').innerHTML = `
     <h2 class="hello">${greet}${name ? ', ' + esc(name) : ''}</h2>
-    <p class="hint" style="margin:0 0 18px">${L.length ? 'Here is where your outreach stands.' : 'Let us get your first leads in.'}</p>
+    ${S.security?.weakPassword ? `<div class="banner" role="alert"><b>Weak password.</b> Your dashboard password is under 12 characters. Set a longer one (DASH_PASSWORD in Cloudflare) so nobody can guess it.</div>` : ''}
+    <p class="hint" style="margin:0 0 14px">${L.length ? 'Here is where your outreach stands.' : 'Let us get your first leads in.'}</p>
     ${setup.some((x) => !x[1]) ? `<div class="card pad" style="margin-bottom:16px"><h3>Get set up</h3><div class="hint" style="margin-bottom:6px">A few quick steps before your first send.</div>${setup.map(([t, d, to]) => `<div class="check ${d ? 'done' : ''}"><span class="dot">${d ? ico('check') : ''}</span><span>${t}</span>${d ? '' : `<a class="btn s" style="margin-left:auto" href="#/${to}">Open</a>`}</div>`).join('')}</div>` : ''}
     <div class="grid g5" style="margin-bottom:16px">
       <div class="card kpi"><div class="ic">${ico('users')}</div><b>${L.length}</b><span>Leads</span><small>${withEmail} with email</small></div>
@@ -329,6 +347,7 @@ function vSettings() {
       <div class="stack">
         <div class="card pad stack"><h3>You</h3><div class="hint">Your name is the sender name. Emails go out as plain text, exactly as you write them, with nothing added.</div>
           ${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}
+          ${field('sAgency', 'Agency name', s.businessName, 'FlightLine')}
           <div class="grid g2">${field('sReply', 'Your email (reply-to and test sends)', s.replyTo, 'your Gmail address', 'email')}${field('sLim', 'Max sends per day', s.dailyLimit, '', 'number')}</div>
         </div>
         <div class="card pad stack"><h3>AI voice</h3><div class="hint">The writer uses these to sound like you and stay accurate.</div>
@@ -349,6 +368,12 @@ function vSettings() {
           <div id="aiTest" class="hint" style="margin-top:8px"></div>
           <div class="hint" style="margin-top:10px">API keys live in Cloudflare secrets and never reach this page.</div>
         </div>
+        <div class="card pad"><h3>${ico('shield')} Security</h3>
+          <div class="check ${S.security?.weakPassword ? '' : 'done'}"><span class="dot">${S.security?.weakPassword ? '' : ico('check')}</span><span>${S.security?.weakPassword ? 'Password is short. Use 12+ characters.' : 'Strong password'}</span></div>
+          <div class="check done"><span class="dot">${ico('check')}</span><span>Sign-in locks after repeated wrong passwords</span></div>
+          <div class="check done"><span class="dot">${ico('check')}</span><span>Sessions expire after 7 days</span></div>
+          <div class="acts" style="margin-top:10px"><button class="btn s" data-act="signOut">Sign out</button><button class="btn s d" data-act="logoutAll">Sign out of all devices</button></div>
+        </div>
         <div class="card pad"><h3>Tips for better replies</h3>
           <ul class="hint" style="margin:8px 0 0;padding-left:18px;line-height:1.7"><li>Send a test to yourself first and check spam.</li><li>Keep the daily limit at 10-20 while your sending address is new.</li><li>Fill in your notes above so reply drafts quote real prices and timelines.</li><li>Follow up once after 3-4 days; two emails is plenty.</li></ul>
         </div>
@@ -364,6 +389,9 @@ A.testAI = (btn) => act(btn, async () => {
     : `<span style="color:var(--bad)"><b>AI failed:</b> ${esc(r.error || 'unknown error')}</span>${models.length ? '<br>Models your key can use: ' + esc(models.join(', ')) : ''}`;
 });
 A.saveSettings = (btn) => act(btn, async () => {
-  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value } });
+  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value, businessName: $('#sAgency').value } });
   S.settings = r.settings; chrome(); toast('Settings saved');
 });
+
+A.logoutAll = (btn) => act(btn, async () => { await api('logout-all', { method: 'POST', body: {} }); showLogin(); });
+A.signOut = () => $('#bOut').click();

@@ -1,4 +1,4 @@
-# Outreach (automatingleads)
+# FlightLine (automatingleads)
 
 Personal lead-finder and outreach dashboard for Cloudflare Pages.
 
@@ -10,6 +10,14 @@ Personal lead-finder and outreach dashboard for Cloudflare Pages.
 - **Analytics:** sends per day, reply rate, lead quality mix, which lead types and categories reply.
 - **Assistant:** a chat that can search leads, find new ones, audit sites, write drafts, edit leads, and queue emails. It never sends on its own; you approve each email with one click.
 - **Plain-text emails:** sent exactly as you write them. No footer, no unsubscribe link or headers, no tracking, no HTML. Bulk sends go out 15-40 seconds apart. Leads marked "Do not contact" are never emailed.
+
+## Security
+- Sign-in sets a signed, HttpOnly, SameSite=Strict `__Host-` cookie that expires in 7 days. "Sign out of all devices" (Settings) revokes every session.
+- Wrong passwords lock the sign-in per IP (5 tries, then 15 min, doubling).
+- Every write needs a same-origin request plus a custom header, which blocks cross-site attacks. Strict CSP, no inline scripts, HSTS, no framing.
+- The site auditor refuses private, local and non-web addresses (SSRF guard). Inputs and list sizes are capped.
+- Use a DASH_PASSWORD of 12+ characters. Optionally set a separate `SESSION_SECRET`. Keep keys only in Cloudflare secrets.
+- The app is installable: use "Add to Home Screen" / "Install app".
 
 ## Deploy
 
