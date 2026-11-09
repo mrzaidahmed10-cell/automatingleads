@@ -19,6 +19,7 @@ const siteCell = (l) => {
   if (!l.website) return '<span class="pill bad">No website</span>';
   const a = `<a href="${esc(href(l.website))}" target="_blank" rel="noopener noreferrer">${esc(host(l.website))}</a>`;
   if (!l.audit) return a + '<br><span class="pill">Not audited</span>';
+  if (l.audit.unverified) return a + '<br><span class="pill">Blocked · check by hand</span>';
   const sc = l.audit.score, c = sc >= 50 ? 'bad' : sc >= 25 ? 'warn' : 'ok';
   return a + `<br><span class="pill ${c}">${sc >= 50 ? 'Poor' : sc >= 25 ? 'Dated' : 'Decent'} · ${sc}</span>`;
 };
@@ -42,7 +43,7 @@ function vLeads() {
         <div class="row">
           <div style="flex:2"><label>City</label><input id="fCity" value="${esc(store.get('city', 'Iowa City, Iowa'))}" placeholder="City, State"></div>
           <div><label>Category</label><select id="fCat">${[['all', 'Everything'], ['restaurants', 'Food & drink'], ['beauty', 'Salons & beauty'], ['auto', 'Auto'], ['fitness', 'Fitness'], ['trades', 'Trades & crafts'], ['health', 'Health & vet'], ['retail', 'Retail'], ['offices', 'Offices']].map(([v, t]) => opt(v, t, store.get('cat', 'all') === v)).join('')}</select></div>
-          <div><label>Looking for</label><select id="fMode">${opt('none', 'No website', store.get('mode', 'none') === 'none')}${opt('has_site', 'Has a website (audit it)', store.get('mode') === 'has_site')}</select></div>
+          <div><label id="fModeL">Looking for</label><div id="fModeMount" class="seg"></div></div>
           <div style="max-width:120px;min-width:100px"><label>Radius</label><select id="fRad">${[5, 15, 30, 50].map((v) => opt(v, v + ' km', String(store.get('rad', 15)) === String(v))).join('')}</select></div>
           <div style="flex:0 0 auto;min-width:0"><button class="btn p" data-act="find">${ico('mapPin')} Find leads</button></div>
         </div>
@@ -50,7 +51,7 @@ function vLeads() {
       <div id="findres"></div>
     </div>
     <div class="card" style="margin-top:16px">
-      <div class="tools"><div class="chips" id="chips"></div><div class="sp"></div><input id="q" aria-label="Search leads" placeholder="Search leads…" style="max-width:220px" value="${esc(ui.query)}"></div>
+      <div class="tools"><div class="chips" id="chips"></div><div class="sp"></div><div id="qMount" class="qm"></div></div>
       <div class="tools">
         <button class="btn s" data-act="bulkAudit">Audit sites</button>
         <button class="btn s" data-act="bulkDraft">Draft for all with email</button>
@@ -60,10 +61,26 @@ function vLeads() {
       <div class="tw"><table class="rt"><thead><tr><th>Business</th><th>Website</th><th>Email</th><th>Status</th></tr></thead><tbody id="tb"></tbody></table></div>
       <div class="empty hide" id="empty"></div>
     </div>`;
-  $('#q').oninput = (e) => { ui.query = e.target.value; renderLeadsTable(); };
+  mountSearch(); mountMode();
   renderFindRes(); renderLeadsTable();
 }
 
+// Glisse controls when available, plain inputs if the glass bundle did not load
+function mountSearch() {
+  const m = $('#qMount'); if (!m) return;
+  const on = (v) => { ui.query = v; renderLeadsTable(); };
+  if (G()) return G().mount(m, 'Search', { label: 'Search leads', placeholder: 'Search leads', value: ui.query, onValueChange: on });
+  m.innerHTML = `<input id="q" aria-label="Search leads" placeholder="Search leads…" value="${esc(ui.query)}">`;
+  $('#q').oninput = (e) => on(e.target.value);
+}
+function mountMode() {
+  const m = $('#fModeMount'); if (!m) return;
+  const cur = store.get('mode', 'none') === 'has_site' ? 'has_site' : 'none';
+  const set = (v) => { store.set('mode', v); mountMode(); };
+  if (G()) return G().mount(m, 'Seg', { label: 'Looking for', value: cur, onValueChange: set, items: [{ value: 'none', label: 'No website' }, { value: 'has_site', label: 'Has a site' }] });
+  m.innerHTML = `<select id="fModeSel" aria-labelledby="fModeL"><option value="none" ${cur === 'none' ? 'selected' : ''}>No website</option><option value="has_site" ${cur === 'has_site' ? 'selected' : ''}>Has a website (audit it)</option></select>`;
+  $('#fModeSel').onchange = (e) => set(e.target.value);
+}
 function renderFindRes() {
   const el = $('#findres'); if (!el) return;
   const r = ui.lastFind;
@@ -85,25 +102,56 @@ function renderLeadsTable() {
     empty.classList.remove('hide');
     empty.innerHTML = S.leads.length ? '<b>No leads match</b>Try a different filter or search.' : '<b>No leads yet</b>Use the finder above to search a city, or add a lead by hand.';
   } else empty.classList.add('hide');
-  tb.innerHTML = rows.map((l) => `<tr class="lead" tabindex="0" role="button" aria-label="Open ${esc(l.name)}" data-act="openLead" data-id="${esc(l.id)}">
+  tb.innerHTML = rows.map(rowHtml).join('');
+}
+const rowHtml = (l) => `<tr class="lead" tabindex="0" aria-label="Open ${esc(l.name)}" data-act="openLead" data-id="${esc(l.id)}">
     <td><div class="nm">${esc(l.name)}</div><div class="sub">${esc([l.category, l.address || l.phone].filter(Boolean).join(' · '))}</div></td>
     <td>${siteCell(l)}</td>
-    <td><input class="em" type="email" data-change="rowEmail" aria-label="Email for ${esc(l.name)}" data-id="${esc(l.id)}" placeholder="add email" value="${esc(l.email)}"></td>
-    <td>${statusPill(l)}</td></tr>`).join('');
+    <td><input class="em" type="email" inputmode="email" autocapitalize="off" spellcheck="false" data-change="rowEmail" aria-label="Email for ${esc(l.name)}" data-id="${esc(l.id)}" placeholder="add email" value="${esc(l.email)}"></td>
+    <td>${statusPill(l)}</td></tr>`;
+// Update one row in place so a save never wipes what you are typing in the next row
+function patchRow(l) {
+  const tr = $(`#tb tr[data-id="${CSS.escape(l.id)}"]`);
+  if (!tr) return;
+  const t = document.createElement('tbody'); t.innerHTML = rowHtml(l);
+  const nt = t.firstElementChild, inp = tr.querySelector('input.em');
+  if (inp && inp === document.activeElement) { [0, 1, 3].forEach((i) => (tr.children[i].innerHTML = nt.children[i].innerHTML)); }
+  else tr.replaceWith(nt);
+}
+function chipsOnly() {
+  const q = ui.query.toLowerCase(), c = $('#chips'); if (!c) return;
+  const base = S.leads.filter((l) => !q || `${l.name} ${l.category} ${l.address} ${l.email} ${l.website}`.toLowerCase().includes(q));
+  c.innerHTML = FILTERS.map(([k, t]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="setFilter" data-f="${k}">${t}<small>${base.filter((l) => leadMatches(l, k)).length}</small></button>`).join('');
 }
 A.setFilter = (t) => { ui.filter = t.dataset.f; renderLeadsTable(); };
 A.toggleFinder = (t) => { const b = $('#finderBody'); b.classList.toggle('hide'); ui.finderOpen = !b.classList.contains('hide'); t.textContent = ui.finderOpen ? 'Hide' : 'Show finder'; };
 C.rowEmail = async (i) => {
-  try { const r = await api('leads/' + i.dataset.id, { method: 'PATCH', body: { email: i.value } }); upd(r.lead); toast('Email saved', 1400); }
-  catch (e) { toast(e.message, 4500); renderLeadsTable(); }
+  const id = i.dataset.id, before = (S.leads.find((x) => x.id === id) || {}).email || '', v = cleanEmail(i.value);
+  if (v === before) { i.value = before; return; }
+  if (v && !validEmail(v)) { i.setAttribute('aria-invalid', 'true'); toast(`"${i.value.slice(0, 50)}" doesn't look like an email.`, 4500); return; }
+  i.removeAttribute('aria-invalid'); i.value = v;
+  try {
+    const r = await api('leads/' + id, { method: 'PATCH', body: { email: v } });
+    upd(r.lead, true); toast(r.lead.status === 'drafted' && before ? 'Saved. Moved back to Drafted so you can email the new address.' : 'Email saved', 2200);
+  } catch (e) { toast(e.message, 4500); i.value = before; }
 };
-function upd(l) { setLead(l); chrome(); renderLeadsTable(); if (ui.cur === l.id) drawer(); }
+document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches && e.target.matches('input.em')) e.target.blur(); });
+function upd(l, rowOnly) { setLead(l); chrome(); if (rowOnly) { patchRow(l); chipsOnly(); } else renderLeadsTable(); if (ui.cur === l.id) drawer(); }
 
 A.find = (btn) => act(btn, async () => {
-  const body = { city: $('#fCity').value, category: $('#fCat').value, mode: $('#fMode').value, radius: $('#fRad').value };
+  const body = { city: $('#fCity').value, category: $('#fCat').value, mode: store.get('mode', 'none') === 'has_site' ? 'has_site' : 'none', radius: $('#fRad').value };
   store.set('city', body.city); store.set('cat', body.category); store.set('mode', body.mode); store.set('rad', body.radius);
   try { ui.lastFind = await api('discover', { method: 'POST', body }); }
-  catch (e) { ui.lastFind = { error: e.message }; renderFindRes(); throw e; }
+  catch (e) {
+    if (!(e.data && e.data.clientFallback)) { ui.lastFind = { error: e.message }; renderFindRes(); throw e; }
+    // The server could not reach the map servers. Try straight from this browser instead.
+    const el = $('#findres'); if (el) el.innerHTML = '<div class="hint" style="margin-top:14px">Server could not reach the map. Searching from your browser…</div>';
+    try {
+      const f = await FINDER.run(body);
+      const r = await api('discover-import', { method: 'POST', body: { items: f.items, place: f.place } });
+      ui.lastFind = { ...r, debug: { ...r.debug, place: f.place, raw: f.raw, chains: f.chains, server: 'your browser' } };
+    } catch (e2) { ui.lastFind = { error: 'Search failed. Server: ' + e.message + '. Browser: ' + e2.message }; renderFindRes(); throw e2; }
+  }
   S = await api('state'); chrome(); renderFindRes(); renderLeadsTable();
   toast(`${ui.lastFind.added} new leads added`);
 });
@@ -146,14 +194,15 @@ A.bulkDraft = (btn) => bulk(btn, async (p) => {
 A.bulkSend = (btn) => bulk(btn, async (p) => {
   const ls = S.leads.filter((l) => l.status === 'drafted' && validEmail(l.email) && l.draft);
   if (!ls.length) return toast('No drafted leads with an email');
-  const room = Math.max(Number(S.settings.dailyLimit) - S.sentToday, 0), n = Math.min(ls.length, room);
-  if (!n) return toast('Daily limit reached. Raise it in Settings or wait until tomorrow.');
-  if (!confirm(`Send ${n} email${n === 1 ? '' : 's'}? (${ls.length} drafted, ${room} left today)\n\nThey go out one at a time, 15 to 40 seconds apart, so keep this tab open.`)) return;
+  const cap = Number(S.settings.dailyLimit) || 0, gap = Number(S.settings.sendGap) || 0;
+  const room = cap ? Math.max(cap - S.sentToday, 0) : ls.length, n = Math.min(ls.length, room);
+  if (!n) return toast('Your daily cap is reached. Change it in Settings.');
+  if (!confirm(`Send ${n} email${n === 1 ? '' : 's'}?${gap ? `\n\nThey go out one at a time, about ${gap} seconds apart, so keep this tab open.` : '\n\nThey go out one at a time. Keep this tab open until it finishes.'}`)) return;
   let sent = 0;
   for (const l of ls.slice(0, n)) {
     p(`Sending ${sent + 1}/${n}…`);
     const r = await api('send', { method: 'POST', body: { id: l.id } }); setLead(r.lead); S.sentToday++; sent++;
-    if (sent < n) { p(`Sent ${sent}/${n}. Pausing before the next one…`); await jitter(15, 40); }
+    if (sent < n && gap) { p(`Sent ${sent}/${n}. Next one in ~${gap}s…`); await jitter(gap * 0.7, gap * 1.3); }
   }
   toast(`Sent ${sent}`);
 });
@@ -171,7 +220,7 @@ A.addLead = (btn) => act(btn, async () => {
   const r = await api('leads', { method: 'POST', body: { name: $('#mName').value, email: $('#mEmail').value, website: $('#mSite').value, phone: $('#mPhone').value } });
   closeOv(); upd(r.lead); toast('Lead added');
 });
-function closeOv() { ui.cur = null; $('#ov').innerHTML = ''; }
+function closeOv() { const a = document.activeElement; if (a && a.closest && a.closest('#ov')) a.blur(); /* fires the change event so nothing typed is lost */ ui.cur = null; $('#ov').innerHTML = ''; }
 A.closeOv = closeOv;
 A.closeBg = (t, e) => { if (e.target === t) closeOv(); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#ov').innerHTML) closeOv(); });
@@ -188,14 +237,18 @@ function drawer() {
   $('#ov').innerHTML = `<div class="scrim" data-act="closeBg"><div class="drawer">
     <div class="dh"><div style="flex:1"><h2>${esc(l.name)}</h2><div class="sub">${esc([l.category, l.address, l.phone].filter(Boolean).join(' · '))}</div></div>${statusPill(l)}<button class="x" data-act="closeOv" aria-label="Close">×</button></div>
 
-    <div class="card sec stack"><h4>Contact</h4>
-      <div class="grid g2"><div><label>Email to approach</label><input id="dEmail" type="email" value="${esc(l.email)}" placeholder="owner@business.com"></div>
-      <div><label>Website</label><input id="dSite" value="${esc(l.website)}" placeholder="none"></div></div>
-      <div><label>Notes</label><input id="dNotes" value="${esc(l.notes)}" placeholder="Anything to remember"></div>
+    <div class="card sec stack"><h4>Contact <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:500">· saves automatically</span></h4>
+      <div><label for="dName">Business name</label><input id="dName" data-change="saveContact" value="${esc(l.name)}"></div>
+      <div class="grid g2"><div><label for="dEmail">Email to approach</label><input id="dEmail" type="email" inputmode="email" autocapitalize="off" spellcheck="false" data-change="saveContact" value="${esc(l.email)}" placeholder="owner@business.com">
+        ${(() => { const alts = [...new Set([...(l.audit?.emails || []), ...(l.prevEmails || [])])].filter((e) => e && e !== l.email).slice(0, 5); return alts.length ? `<div class="alts" aria-label="Other emails found">${alts.map((e) => `<button class="chip" data-act="useEmail" data-v="${esc(e)}" title="Switch to this address">${esc(e)}</button>`).join('')}</div>` : ''; })()}</div>
+      <div><label for="dSite">Website</label><input id="dSite" data-change="saveContact" value="${esc(l.website)}" placeholder="none"></div></div>
+      <div class="grid g2"><div><label for="dPhone">Phone</label><input id="dPhone" type="tel" data-change="saveContact" value="${esc(l.phone)}"></div>
+      <div><label for="dAddr">Address</label><input id="dAddr" data-change="saveContact" value="${esc(l.address)}"></div></div>
+      <div><label for="dNotes">Notes</label><input id="dNotes" data-change="saveContact" value="${esc(l.notes)}" placeholder="Anything to remember"></div>
       <div class="acts"><button class="btn s" data-act="dSave">Save contact</button>${l.website ? '<button class="btn s" data-act="dAudit">Audit site</button>' : ''}${contacted(l) ? '<button class="btn s" data-act="dToReplies">Quick reply / follow-up</button>' : ''}</div>
     </div>
 
-    ${l.audit ? `<div class="card sec"><h4>Site audit · ${l.audit.score}/100 (higher = weaker site)</h4>${l.audit.issues.length ? '<ul class="iss">' + l.audit.issues.map((i) => `<li>${esc(i)}</li>`).join('') + '</ul>' : '<span class="sub">No obvious problems found.</span>'}</div>` : ''}
+    ${l.audit ? `<div class="card sec"><h4>Site audit · ${l.audit.unverified ? 'could not be judged' : l.audit.score + '/100 (higher = weaker site)'}</h4>${l.audit.issues.length ? '<ul class="iss">' + l.audit.issues.map((i) => `<li>${esc(i)}</li>`).join('') + '</ul>' : '<span class="sub">No obvious problems found.</span>'}${l.audit.good?.length ? '<div class="chips" style="margin-top:8px">' + l.audit.good.map((g) => `<span class="pill ok">${esc(g)}</span>`).join('') + '</div>' : ''}</div>` : ''}
 
     <div class="card sec stack"><h4>Email${d.angle ? ` · angle: ${esc(d.angle)}` : ''}</h4>
       <div><label>Subject</label><input id="dSub" data-change="saveDraft" value="${esc(d.subject)}">
@@ -226,14 +279,32 @@ C.saveDraft = async () => {
 };
 C.dStat = async (s) => { const l = curLead(); const r = await api('leads/' + l.id, { method: 'PATCH', body: { status: s.value } }); upd(r.lead); };
 A.useAlt = (t) => { $('#dSub').value = t.dataset.v; C.saveDraft(); };
-A.dSave = (btn) => act(btn, async () => {
-  const l = curLead();
-  const r = await api('leads/' + l.id, { method: 'PATCH', body: { email: $('#dEmail').value, website: $('#dSite').value, notes: $('#dNotes').value } });
-  upd(r.lead); toast('Saved');
-});
+const contactBody = () => {
+  const l = curLead(), b = {}, f = { name: '#dName', email: '#dEmail', website: '#dSite', phone: '#dPhone', address: '#dAddr', notes: '#dNotes' };
+  for (const [k, sel] of Object.entries(f)) {
+    const el = $(sel); if (!el) continue;
+    let v = el.value; if (k === 'email') v = cleanEmail(v);
+    if (v.trim() !== String(l[k] || '').trim()) b[k] = v;
+  }
+  return b;
+};
+async function saveContact(quiet) {
+  const l = curLead(); if (!l) return;
+  const b = contactBody(), em = $('#dEmail');
+  if ('email' in b && b.email && !validEmail(b.email)) { em.setAttribute('aria-invalid', 'true'); toast(`"${em.value.slice(0, 50)}" doesn't look like an email.`, 4500); delete b.email; }
+  else if (em) em.removeAttribute('aria-invalid');
+  if (!Object.keys(b).length) { if (!quiet) toast('Nothing to save'); return; }
+  const was = l.status;
+  const r = await api('leads/' + l.id, { method: 'PATCH', body: b });
+  upd(r.lead);
+  toast('email' in b && was !== 'drafted' && r.lead.status === 'drafted' ? 'Saved. Moved back to Drafted so you can email the new address.' : 'Saved', 2200);
+}
+C.saveContact = () => saveContact(true).catch((e) => toast(e.message, 4500));
+A.dSave = (btn) => act(btn, () => saveContact(false));
+A.useEmail = (t) => { $('#dEmail').value = t.dataset.v; C.saveContact(); };
 A.dAudit = (btn) => act(btn, async () => {
-  const l = curLead();
-  await api('leads/' + l.id, { method: 'PATCH', body: { website: $('#dSite').value } });
+  const l = curLead(), b = contactBody();
+  if (b.website !== undefined) await api('leads/' + l.id, { method: 'PATCH', body: { website: b.website } });
   const r = await api('audit', { method: 'POST', body: { ids: [l.id] } });
   upd(r.leads[0]); toast('Audit done');
 });
@@ -248,7 +319,8 @@ A.dTest = (btn) => act(btn, async () => {
   toast('Test sent to your reply-to address');
 });
 A.dSend = (btn) => act(btn, async () => {
-  const l = curLead(), email = $('#dEmail').value;
+  const l = curLead(), email = cleanEmail($('#dEmail').value);
+  if (!validEmail(email)) return toast('Add a valid email first.');
   const d = draftNow();
   if (hasBlanks(d.body) && !confirm('Your email still has [bracketed] placeholders. Send anyway?')) return;
   await api('leads/' + l.id, { method: 'PATCH', body: { email } });

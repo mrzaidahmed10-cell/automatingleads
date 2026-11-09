@@ -5,7 +5,7 @@ const CSP = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
-  "connect-src 'self'",
+  "connect-src 'self' https://overpass-api.de https://overpass.kumi.systems https://overpass.private.coffee https://overpass.openstreetmap.fr https://geocoding-api.open-meteo.com https://nominatim.openstreetmap.org",
   "font-src 'self'",
   "manifest-src 'self'",
   "base-uri 'none'",

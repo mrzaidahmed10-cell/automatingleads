@@ -4,6 +4,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const jitter = (a, b) => sleep((a + Math.random() * (b - a)) * 1000); // irregular gaps between sends look human
+const cleanEmail = (s) => { s = String(s || '').trim(); const m = s.match(/<([^>]+)>/); if (m) s = m[1]; return s.replace(/^mailto:/i, '').replace(/\s+/g, '').replace(/[,;:.)\]]+$/, '').toLowerCase(); };
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e || '');
 const firstName = (n) => String(n || '').trim().split(/\s+/)[0] || '';
 const store = {
@@ -61,7 +62,7 @@ async function api(path, opt = {}) {
   } catch { throw new Error('Network error. Check your connection.'); }
   if (r.status === 401) { showLogin(); throw new Error('Signed out'); }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || (r.status === 404 ? 'API not found: the Functions did not deploy.' : 'Server error ' + r.status));
+  if (!r.ok) { const er = new Error(j.error || (r.status === 404 ? 'API not found: the Functions did not deploy.' : 'Server error ' + r.status)); er.data = j; throw er; }
   return j;
 }
 async function act(btn, fn) {
@@ -84,14 +85,24 @@ $('#lf').onsubmit = async (e) => {
 $('#bOut').onclick = async () => { try { await fetch('/api/logout', { method: 'POST', headers: HDR, credentials: 'same-origin' }); } catch {} showLogin(); };
 
 /* ---------- theme + density ---------- */
+const G = () => window.FLGlass;
 function themeIcon() {
   const dark = document.documentElement.dataset.theme === 'dark';
-  $('#bThemeM').innerHTML = dark ? ico('sun') : ico('moon');
-  $('#bThemeM').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
   const comfy = document.documentElement.dataset.density === 'comfy';
-  $('#bDens').innerHTML = ico('rows') + '<span class="hm">' + (comfy ? 'Comfy' : 'Compact') + '</span>';
-  $('#bDens').setAttribute('aria-label', comfy ? 'Density: comfy. Switch to compact' : 'Density: compact. Switch to comfy');
-  $('#bPal').innerHTML = ico('search') + '<span class="hm">Jump <kbd>Ctrl K</kbd></span>';
+  const g = G();
+  $('#topFallback').classList.toggle('hide', !!g);
+  if (g) {
+    g.mount($('#topTools'), 'TopTools', {
+      onJump: () => A.palette(), onTheme: toggleTheme, onDensity: (v) => { if (v !== (document.documentElement.dataset.density === 'comfy' ? 'comfy' : 'compact')) A.density(); },
+      density: comfy ? 'comfy' : 'compact', dark, jumpIcon: ico('search'), themeIcon: ico(dark ? 'sun' : 'moon'),
+    });
+  } else {
+    $('#bThemeM').innerHTML = dark ? ico('sun') : ico('moon');
+    $('#bThemeM').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+    $('#bDens').innerHTML = ico('rows') + '<span class="hm">' + (comfy ? 'Comfy' : 'Compact') + '</span>';
+    $('#bDens').setAttribute('aria-label', comfy ? 'Density: comfy. Switch to compact' : 'Density: compact. Switch to comfy');
+    $('#bPal').innerHTML = ico('search') + '<span class="hm">Jump <kbd>Ctrl K</kbd></span>';
+  }
   $('#bOut').querySelector('.bi').innerHTML = ico('out');
 }
 function toggleTheme() {
@@ -117,6 +128,7 @@ const ROUTES = {
 };
 const page = () => { const k = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0]; return ROUTES[k] ? k : 'dashboard'; };
 function route() {
+  if (window.FLGlass) window.FLGlass.unmountWithin($('#view'));
   const k = page();
   $('#title').textContent = ROUTES[k][0]; document.title = ROUTES[k][0] + ' · FlightLine';
   $('#view').innerHTML = '';
@@ -133,10 +145,12 @@ function chrome() {
   const items = Object.entries(ROUTES).map(([key, [label, , ic]]) =>
     `<a href="#/${key}" class="${k === key ? 'on' : ''}" ${k === key ? 'aria-current="page"' : ''}>${ico(ic)}<span class="t">${label.replace('Quick replies', 'Replies')}</span>${badge[key] ? `<span class="badge">${badge[key]}</span>` : ''}</a>`).join('');
   $('#nav').innerHTML = items;
-  $('#tabbar').innerHTML = Object.entries(ROUTES).map(([key, [label, , ic]]) => `<a href="#/${key}" class="${k === key ? 'on' : ''}" ${k === key ? 'aria-current="page"' : ''}>${ico(ic)}${label.replace('Quick replies', 'Replies')}${badge[key] ? `<span class="badge">${badge[key]}</span>` : ''}</a>`).join('');
-  const lim = Number(S.settings.dailyLimit || 20);
-  $('#qTxt').textContent = `${S.sentToday} / ${lim} sent today`;
-  $('#qBar').style.width = Math.min(100, (S.sentToday / lim) * 100) + '%';
+  if (G()) G().mount($('#tabbar'), 'Tabs', { value: k, items: Object.entries(ROUTES).map(([key, [label, , ic]]) => ({ value: key, href: '#/' + key, label: label.replace('Quick replies', 'Replies'), icon: ico(ic), badge: badge[key] || 0 })) });
+  else $('#tabbar').innerHTML = Object.entries(ROUTES).map(([key, [label, , ic]]) => `<a href="#/${key}" class="${k === key ? 'on' : ''}" ${k === key ? 'aria-current="page"' : ''}>${ico(ic)}${label.replace('Quick replies', 'Replies')}${badge[key] ? `<span class="badge">${badge[key]}</span>` : ''}</a>`).join('');
+  const lim = Number(S.settings.dailyLimit) || 0;
+  $('#qTxt').textContent = lim ? `${S.sentToday} / ${lim} sent today` : `${S.sentToday} sent today`;
+  $('#qBar').style.width = lim ? Math.min(100, (S.sentToday / lim) * 100) + '%' : '0%';
+  $('#qCap').textContent = lim ? 'Daily send cap' : 'No daily cap';
   $('#topHint').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   themeIcon();
 }
@@ -243,7 +257,7 @@ function vDash() {
   const n = (f) => L.filter(f).length;
   const withEmail = n((l) => validEmail(l.email)), cont = n(contacted), rep = n((l) => l.status === 'replied');
   const hr = new Date().getHours(), greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-  const lim = Number(s.settings?.dailyLimit || s.dailyLimit || 20);
+  const lim = Number(s.dailyLimit) || 0;
   const setup = [
     ['Add your name', !!s.senderName, 'settings'],
     ['Connect email sending', !!S.configured.email, 'settings'],
@@ -288,7 +302,7 @@ function vDash() {
     ${setup.some((x) => !x[1]) ? `<div class="card pad" style="margin-bottom:16px"><h3>Get set up</h3><div class="hint" style="margin-bottom:6px">A few quick steps before your first send.</div>${setup.map(([t, d, to]) => `<div class="check ${d ? 'done' : ''}"><span class="dot">${d ? ico('check') : ''}</span><span>${t}</span>${d ? '' : `<a class="btn s" style="margin-left:auto" href="#/${to}">Open</a>`}</div>`).join('')}</div>` : ''}
     <div class="grid g5" style="margin-bottom:16px">
       <div class="card kpi"><div class="ic">${ico('users')}</div><b>${L.length}</b><span>Leads</span><small>${withEmail} with email</small></div>
-      <div class="card kpi"><div class="ic">${ico('send')}</div><b>${cont}</b><span>Emailed</span><small>${S.sentToday} / ${lim} today</small></div>
+      <div class="card kpi"><div class="ic">${ico('send')}</div><b>${cont}</b><span>Emailed</span><small>${S.sentToday}${lim ? ' / ' + lim : ''} today</small></div>
       <div class="card kpi"><div class="ic">${ico('reply')}</div><b>${rep}</b><span>Replies</span><small>${cont ? Math.round((rep / cont) * 100) + '% reply rate' : 'no sends yet'}</small></div>
       <div class="card kpi"><div class="ic">${ico('edit')}</div><b>${n((l) => l.status === 'drafted')}</b><span>Drafts waiting</span><small>${due} follow-ups due</small></div>
       <div class="card kpi"><div class="ic">${ico('mail')}</div><b>${S.suppressed}</b><span>Do not contact</span><small>never emailed again</small></div>
@@ -348,7 +362,8 @@ function vSettings() {
         <div class="card pad stack"><h3>You</h3><div class="hint">Your name is the sender name. Emails go out as plain text, exactly as you write them, with nothing added.</div>
           ${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}
           ${field('sAgency', 'Agency name', s.businessName, 'FlightLine')}
-          <div class="grid g2">${field('sReply', 'Your email (reply-to and test sends)', s.replyTo, 'your Gmail address', 'email')}${field('sLim', 'Max sends per day', s.dailyLimit, '', 'number')}</div>
+          <div class="grid g2">${field('sReply', 'Your email (reply-to and test sends)', s.replyTo, 'your Gmail address', 'email')}${field('sLim', 'Daily send cap (0 = no cap)', s.dailyLimit, '0', 'number')}</div>
+          <div class="grid g2">${field('sGap', 'Seconds between bulk sends (0 = none)', s.sendGap, '0', 'number')}<div class="hint" style="align-self:end">Both are optional guardrails. Leave at 0 for none.</div></div>
         </div>
         <div class="card pad stack"><h3>AI voice</h3><div class="hint">The writer uses these to sound like you and stay accurate.</div>
           <div><label>Tone</label><select id="sTone">${[['friendly', 'Friendly (default)'], ['casual', 'Casual and short'], ['direct', 'Direct'], ['professional', 'Professional']].map(([v, t]) => `<option value="${v}" ${s.tone === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -375,7 +390,7 @@ function vSettings() {
           <div class="acts" style="margin-top:10px"><button class="btn s" data-act="signOut">Sign out</button><button class="btn s d" data-act="logoutAll">Sign out of all devices</button></div>
         </div>
         <div class="card pad"><h3>Tips for better replies</h3>
-          <ul class="hint" style="margin:8px 0 0;padding-left:18px;line-height:1.7"><li>Send a test to yourself first and check spam.</li><li>Keep the daily limit at 10-20 while your sending address is new.</li><li>Fill in your notes above so reply drafts quote real prices and timelines.</li><li>Follow up once after 3-4 days; two emails is plenty.</li></ul>
+          <ul class="hint" style="margin:8px 0 0;padding-left:18px;line-height:1.7"><li>Send a test to yourself first and check spam.</li><li>A brand new sending address can land in spam if it blasts a lot at once. A cap or a gap is optional, your call.</li><li>Fill in your notes above so reply drafts quote real prices and timelines.</li><li>Follow up once after 3-4 days; two emails is plenty.</li></ul>
         </div>
       </div>
     </div>`;
@@ -389,7 +404,7 @@ A.testAI = (btn) => act(btn, async () => {
     : `<span style="color:var(--bad)"><b>AI failed:</b> ${esc(r.error || 'unknown error')}</span>${models.length ? '<br>Models your key can use: ' + esc(models.join(', ')) : ''}`;
 });
 A.saveSettings = (btn) => act(btn, async () => {
-  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value, businessName: $('#sAgency').value } });
+  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, sendGap: $('#sGap').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value, businessName: $('#sAgency').value } });
   S.settings = r.settings; chrome(); toast('Settings saved');
 });
 

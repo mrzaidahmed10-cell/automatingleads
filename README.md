@@ -11,6 +11,13 @@ Personal lead-finder and outreach dashboard for Cloudflare Pages.
 - **Assistant:** a chat that can search leads, find new ones, audit sites, write drafts, edit leads, and queue emails. It never sends on its own; you approve each email with one click.
 - **Plain-text emails:** sent exactly as you write them. No footer, no unsubscribe link or headers, no tracking, no HTML. Bulk sends go out 15-40 seconds apart. Leads marked "Do not contact" are never emailed.
 
+## Look and feel
+The controls (top bar tools, mobile tab bar, search, segmented switches) are real [Glisse](https://github.com/0kzh/glisse) components by Kelvin Zhang (MIT), bundled into `public/glass.js`. Cards, sidebar and dialogs use the same glass material. Chromium browsers get true refraction, others get frosted glass. If `glass.js` ever fails to load, the dashboard falls back to plain controls.
+Rebuild only if you edit `glass-src/entry.jsx`: `cd glass-src && npm install && npm run build`. Cloudflare does not need to build anything.
+
+## Lead finder
+Searches OpenStreetMap. The server asks every map mirror at once and takes the first answer, then falls back to a second source. If the server still cannot reach the map, your browser runs the search itself and the dashboard saves the results. There is no send cap by default. Daily cap and the gap between bulk sends are optional in Settings.
+
 ## Security
 - Sign-in sets a signed, HttpOnly, SameSite=Strict `__Host-` cookie that expires in 7 days. "Sign out of all devices" (Settings) revokes every session.
 - Wrong passwords lock the sign-in per IP (5 tries, then 15 min, doubling).

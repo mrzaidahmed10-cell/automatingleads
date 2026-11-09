@@ -30,11 +30,12 @@
 </div>
 
 <div id="app" class="shell hide">
+  <div id="aurora" aria-hidden="true"></div>
   <aside class="side">
     <div class="brand"><img class="mark" src="icons/logo-96.png" alt="" width="32" height="32"><span class="bn">FlightLine<small>Outreach</small></span></div>
     <nav class="nav" id="nav" aria-label="Main"></nav>
     <div class="sidefoot">
-      <div class="quota"><b id="qTxt"></b><div class="meter" role="presentation"><i id="qBar" style="width:0"></i></div><div class="hint" style="margin-top:5px;font-size:11.5px">Daily send limit</div></div>
+      <div class="quota"><b id="qTxt"></b><div class="meter" role="presentation"><i id="qBar" style="width:0"></i></div><div class="hint" id="qCap" style="margin-top:5px;font-size:11.5px"></div></div>
       <div class="foot2">
         <button class="btn s" id="bOut" style="flex:1;justify-content:center" aria-label="Sign out"><span class="bt">Sign out</span><span class="bi"></span></button>
       </div>
@@ -44,9 +45,12 @@
     <header class="top">
       <h1 id="title"></h1><div class="sp"></div>
       <span class="hint hm" id="topHint"></span>
-      <button class="btn s" id="bPal" data-act="palette" aria-label="Quick jump (Ctrl K)"></button>
-      <button class="btn s g" id="bDens" data-act="density"></button>
-      <button class="btn s g" id="bThemeM" aria-label="Toggle dark mode"></button>
+      <div id="topTools"></div>
+      <span id="topFallback">
+        <button class="btn s" id="bPal" data-act="palette" aria-label="Quick jump (Ctrl K)"></button>
+        <button class="btn s g" id="bDens" data-act="density"></button>
+        <button class="btn s g" id="bThemeM" aria-label="Toggle dark mode"></button>
+      </span>
     </header>
     <main id="view" tabindex="-1"></main>
   </div>
@@ -55,7 +59,9 @@
 
 <div id="ov"></div>
 <div id="toast" role="status" aria-live="polite"></div>
+<script src="glass.js"></script>
 <script src="app.js"></script>
+<script src="finder.js"></script>
 <script src="leads.js"></script>
 <script src="replies.js"></script>
 <script src="assistant.js"></script>
