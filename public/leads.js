@@ -1,12 +1,16 @@
 'use strict';
 /* ---------- leads page ---------- */
-const FILTERS = [['all', 'All'], ['email', 'Has email'], ['noemail', 'Needs email'], ['nosite', 'No website'], ['poor', 'Poor site'], ['drafted', 'Drafted'], ['sent', 'Sent'], ['replied', 'Replied']];
+const FILTERS = [['all', 'All'], ['hot', 'Hot'], ['unver', 'Unchecked'], ['email', 'Has email'], ['noemail', 'Needs email'], ['nosite', 'No website'], ['poor', 'Poor site'], ['drafted', 'Drafted'], ['sent', 'Sent'], ['replied', 'Replied']];
+// Worth pitching: not contacted yet, and either confirmed to have no real website or a poor one
+const isHot = (l) => ['new', 'drafted'].includes(l.status) && ((!l.website && !!l.web && ['none', 'social'].includes(l.web.status)) || (!!l.website && !!l.audit && !l.audit.unverified && l.audit.score >= 40));
 let busyBulk = false;
 
 function leadMatches(l, f) {
   switch (f) {
     case 'email': return validEmail(l.email);
     case 'noemail': return !validEmail(l.email) && !['unsub', 'skip'].includes(l.status);
+    case 'hot': return isHot(l);
+    case 'unver': return !l.website && !l.web;
     case 'nosite': return !l.website;
     case 'poor': return !!(l.audit && l.audit.score >= 40);
     case 'drafted': return l.status === 'drafted';
@@ -16,8 +20,15 @@ function leadMatches(l, f) {
   }
 }
 const siteCell = (l) => {
-  if (!l.website) return '<span class="pill bad">No website</span>';
-  const a = `<a href="${esc(href(l.website))}" target="_blank" rel="noopener noreferrer">${esc(host(l.website))}</a>`;
+  if (!l.website) {
+    const w = l.web;
+    if (!w) return '<span class="pill warn">Not checked</span><br><span class="sub">none listed on the map</span>';
+    if (w.status === 'social') return `<span class="pill acc">Social page only</span>${w.social ? `<br><a href="${esc(href(w.social))}" target="_blank" rel="noopener noreferrer" class="sub">${esc(host(w.social))}</a>` : ''}`;
+    if (w.status === 'none') return `<span class="pill ok">No website ✓</span><br><span class="sub">${w.confidence === 'medium' ? 'likely, search was unavailable' : 'verified'}</span>`;
+    return '<span class="pill">Could not check</span>';
+  }
+  const found = l.web && l.web.status === 'site' && l.web.source && l.web.source !== 'listed' ? '<span class="sub"> · found online</span>' : '';
+  const a = `<a href="${esc(href(l.website))}" target="_blank" rel="noopener noreferrer">${esc(host(l.website))}</a>${found}`;
   if (!l.audit) return a + '<br><span class="pill">Not audited</span>';
   if (l.audit.unverified) return a + '<br><span class="pill">Blocked · check by hand</span>';
   const sc = l.audit.score, c = sc >= 50 ? 'bad' : sc >= 25 ? 'warn' : 'ok';
@@ -43,22 +54,27 @@ function vLeads() {
         <div class="row">
           <div style="flex:2"><label>City</label><input id="fCity" value="${esc(store.get('city', 'Iowa City, Iowa'))}" placeholder="City, State"></div>
           <div><label>Category</label><select id="fCat">${[['all', 'Everything'], ['restaurants', 'Food & drink'], ['beauty', 'Salons & beauty'], ['auto', 'Auto'], ['fitness', 'Fitness'], ['trades', 'Trades & crafts'], ['health', 'Health & vet'], ['retail', 'Retail'], ['offices', 'Offices']].map(([v, t]) => opt(v, t, store.get('cat', 'all') === v)).join('')}</select></div>
-          <div><label id="fModeL">Looking for</label><div id="fModeMount" class="seg"></div></div>
+          <div class="fmode"><label id="fModeL">Looking for</label><div id="fModeMount" class="seg"></div></div>
           <div style="max-width:120px;min-width:100px"><label>Radius</label><select id="fRad">${[5, 15, 30, 50].map((v) => opt(v, v + ' km', String(store.get('rad', 15)) === String(v))).join('')}</select></div>
           <div style="flex:0 0 auto;min-width:0"><button class="btn p" data-act="find">${ico('mapPin')} Find leads</button></div>
         </div>
+        <label class="chk" style="margin-top:10px"><input type="checkbox" id="fAuto" ${store.get('auto', '1') === '1' ? 'checked' : ''}> Check every result for a real website, then audit the ones that have one <span class="hint">(OpenStreetMap often misses websites, so this is what separates real leads from false ones)</span></label>
       </div>
       <div id="findres"></div>
     </div>
     <div class="card" style="margin-top:16px">
       <div class="tools"><div class="chips" id="chips"></div><div class="sp"></div><div id="qMount" class="qm"></div></div>
       <div class="tools">
+        <select id="qsel" class="qsel" data-change="quickSel" aria-label="Quick select"></select>
+        <span id="selbar" class="selbar hide" role="group" aria-label="Selection"></span>
+        <div class="sp"></div>
+        <button class="btn s" data-act="bulkVerify" title="Look for a website for every lead that has none listed">${ico('shield')} Verify websites</button>
         <button class="btn s" data-act="bulkAudit">Audit sites</button>
         <button class="btn s" data-act="bulkDraft">Draft for all with email</button>
         <button class="btn s p" data-act="bulkSend">${ico('send')} Send all drafted</button>
         <span class="hint" id="prog"></span>
       </div>
-      <div class="tw"><table class="rt"><thead><tr><th>Business</th><th>Website</th><th>Email</th><th>Status</th></tr></thead><tbody id="tb"></tbody></table></div>
+      <div class="tw"><table class="rt"><thead><tr><th class="ck"><input type="checkbox" id="selAll" data-act="selAll" aria-label="Select all shown"></th><th>Business</th><th>Website</th><th>Email</th><th>Status</th><th class="dl"></th></tr></thead><tbody id="tb"></tbody></table></div>
       <div class="empty hide" id="empty"></div>
     </div>`;
   mountSearch(); mountMode();
@@ -75,10 +91,10 @@ function mountSearch() {
 }
 function mountMode() {
   const m = $('#fModeMount'); if (!m) return;
-  const cur = store.get('mode', 'none') === 'has_site' ? 'has_site' : 'none';
+  const cur = ['has_site', 'any'].includes(store.get('mode', 'none')) ? store.get('mode') : 'none';
   const set = (v) => { store.set('mode', v); mountMode(); };
-  if (G()) return G().mount(m, 'Seg', { label: 'Looking for', value: cur, onValueChange: set, items: [{ value: 'none', label: 'No website' }, { value: 'has_site', label: 'Has a site' }] });
-  m.innerHTML = `<select id="fModeSel" aria-labelledby="fModeL"><option value="none" ${cur === 'none' ? 'selected' : ''}>No website</option><option value="has_site" ${cur === 'has_site' ? 'selected' : ''}>Has a website (audit it)</option></select>`;
+  if (G()) return G().mount(m, 'Seg', { label: 'Looking for', value: cur, onValueChange: set, items: [{ value: 'none', label: 'No site' }, { value: 'has_site', label: 'Has site' }, { value: 'any', label: 'Both' }] });
+  m.innerHTML = `<select id="fModeSel" aria-labelledby="fModeL"><option value="none" ${cur === 'none' ? 'selected' : ''}>No website</option><option value="has_site" ${cur === 'has_site' ? 'selected' : ''}>Has a website (audit it)</option><option value="any" ${cur === 'any' ? 'selected' : ''}>Both</option></select>`;
   $('#fModeSel').onchange = (e) => set(e.target.value);
 }
 function renderFindRes() {
@@ -87,7 +103,10 @@ function renderFindRes() {
   if (!r) { el.innerHTML = ''; return; }
   if (r.error) { el.innerHTML = `<div class="banner" style="margin:14px 0 0">${esc(r.error)}</div>`; return; }
   const d = r.debug || {};
-  el.innerHTML = `<div class="hint" style="margin-top:14px">Searched <b>${esc(d.place || '')}</b> · ${d.raw ?? r.found} places on the map · <b style="color:var(--ok)">${r.added} new</b> · ${r.dupes} already in your list${d.chains ? ' · ' + d.chains + ' chains skipped' : ''}</div>` +
+  const c = r.check;
+  el.innerHTML = `<div class="hint" style="margin-top:14px">Searched <b>${esc(d.place || '')}</b> · ${d.raw ?? r.found} places found · <b style="color:var(--ok)">${r.added} new</b> · ${r.dupes} already in your list${r.hidden ? ' · ' + r.hidden + ' you deleted earlier' : ''}${d.chains ? ' · ' + d.chains + ' chains skipped' : ''}${d.google && !/^off/.test(d.google) ? ' · Google: ' + esc(d.google) : ''}</div>` +
+    (c ? `<div class="hint" style="margin-top:4px">Website check: <b style="color:var(--ok)">${c.none + c.social} have no real site</b> (${c.none} none, ${c.social} social page only) · ${c.site} already had a site${c.audited ? ` (${c.poor} poor)` : ''}${c.unsure ? ` · ${c.unsure} could not be checked` : ''}</div>` : '') +
+    '<div id="findprog" class="hint" style="margin-top:6px"></div>' +
     (r.found === 0 ? `<div class="banner" style="margin:10px 0 0">Nothing matched. Try a bigger radius, the "Everything" category, or switch to "Has a website" to find outdated sites. Map coverage varies by town.</div>` : '');
 }
 
@@ -96,26 +115,29 @@ function renderLeadsTable() {
   const q = ui.query.toLowerCase();
   const base = S.leads.filter((l) => !q || `${l.name} ${l.category} ${l.address} ${l.email} ${l.website}`.toLowerCase().includes(q));
   $('#chips').innerHTML = FILTERS.map(([k, t]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="setFilter" data-f="${k}">${t}<small>${base.filter((l) => leadMatches(l, k)).length}</small></button>`).join('');
-  const rows = base.filter((l) => leadMatches(l, ui.filter));
+  const rows = base.filter((l) => leadMatches(l, ui.filter)).sort((a, b) => (isHot(b) ? 1 : 0) - (isHot(a) ? 1 : 0));
   const empty = $('#empty');
   if (!rows.length) {
     empty.classList.remove('hide');
     empty.innerHTML = S.leads.length ? '<b>No leads match</b>Try a different filter or search.' : '<b>No leads yet</b>Use the finder above to search a city, or add a lead by hand.';
   } else empty.classList.add('hide');
   tb.innerHTML = rows.map(rowHtml).join('');
+  renderSel();
 }
-const rowHtml = (l) => `<tr class="lead" tabindex="0" aria-label="Open ${esc(l.name)}" data-act="openLead" data-id="${esc(l.id)}">
-    <td><div class="nm">${esc(l.name)}</div><div class="sub">${esc([l.category, l.address || l.phone].filter(Boolean).join(' · '))}</div></td>
+const rowHtml = (l) => `<tr class="lead ${sel().has(l.id) ? 'picked' : ''}" tabindex="0" aria-label="Open ${esc(l.name)}" data-act="openLead" data-id="${esc(l.id)}">
+    <td class="ck"><input type="checkbox" class="sel" data-act="selRow" data-id="${esc(l.id)}" aria-label="Select ${esc(l.name)}" ${sel().has(l.id) ? 'checked' : ''}></td>
+    <td><div class="nm">${esc(l.name)}${isHot(l) ? ' <span class="pill acc">Hot</span>' : ''}</div><div class="sub">${esc([l.category, l.rating ? `${l.rating}★${l.reviews ? ' (' + l.reviews + ')' : ''}` : '', l.address || l.phone].filter(Boolean).join(' · '))}</div></td>
     <td>${siteCell(l)}</td>
     <td><input class="em" type="email" inputmode="email" autocapitalize="off" spellcheck="false" data-change="rowEmail" aria-label="Email for ${esc(l.name)}" data-id="${esc(l.id)}" placeholder="add email" value="${esc(l.email)}"></td>
-    <td>${statusPill(l)}</td></tr>`;
+    <td>${statusPill(l)}</td>
+    <td class="dl"><button class="btn s g rowdel" data-act="rowDel" data-id="${esc(l.id)}" aria-label="Delete ${esc(l.name)}" title="Delete">${ico('trash')}</button></td></tr>`;
 // Update one row in place so a save never wipes what you are typing in the next row
 function patchRow(l) {
   const tr = $(`#tb tr[data-id="${CSS.escape(l.id)}"]`);
   if (!tr) return;
   const t = document.createElement('tbody'); t.innerHTML = rowHtml(l);
   const nt = t.firstElementChild, inp = tr.querySelector('input.em');
-  if (inp && inp === document.activeElement) { [0, 1, 3].forEach((i) => (tr.children[i].innerHTML = nt.children[i].innerHTML)); }
+  if (inp && inp === document.activeElement) { [1, 2, 4].forEach((i) => (tr.children[i].innerHTML = nt.children[i].innerHTML)); }
   else tr.replaceWith(nt);
 }
 function chipsOnly() {
@@ -139,8 +161,9 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.
 function upd(l, rowOnly) { setLead(l); chrome(); if (rowOnly) { patchRow(l); chipsOnly(); } else renderLeadsTable(); if (ui.cur === l.id) drawer(); }
 
 A.find = (btn) => act(btn, async () => {
-  const body = { city: $('#fCity').value, category: $('#fCat').value, mode: store.get('mode', 'none') === 'has_site' ? 'has_site' : 'none', radius: $('#fRad').value };
-  store.set('city', body.city); store.set('cat', body.category); store.set('mode', body.mode); store.set('rad', body.radius);
+  const body = { city: $('#fCity').value, category: $('#fCat').value, mode: ['has_site', 'any'].includes(store.get('mode', 'none')) ? store.get('mode') : 'none', radius: $('#fRad').value };
+  const auto = $('#fAuto') ? $('#fAuto').checked : true;
+  store.set('city', body.city); store.set('cat', body.category); store.set('mode', body.mode); store.set('rad', body.radius); store.set('auto', auto ? '1' : '0');
   try { ui.lastFind = await api('discover', { method: 'POST', body }); }
   catch (e) {
     if (!(e.data && e.data.clientFallback)) { ui.lastFind = { error: e.message }; renderFindRes(); throw e; }
@@ -153,7 +176,12 @@ A.find = (btn) => act(btn, async () => {
     } catch (e2) { ui.lastFind = { error: 'Search failed. Server: ' + e.message + '. Browser: ' + e2.message }; renderFindRes(); throw e2; }
   }
   S = await api('state'); chrome(); renderFindRes(); renderLeadsTable();
-  toast(`${ui.lastFind.added} new leads added`);
+  const ids = (ui.lastFind && ui.lastFind.ids) || [];
+  if (auto && ids.length) {
+    const st = await checkAndAudit(ids, pipeSay);
+    ui.lastFind.check = st; pipeSay(''); chrome(); renderFindRes(); renderLeadsTable();
+    toast(`${ids.length} new · ${st.none + st.social} have no real website · ${st.site} had one`, 6000);
+  } else toast(`${ui.lastFind.added} new leads added`);
 });
 
 /* ---------- bulk ---------- */
@@ -226,7 +254,7 @@ A.closeBg = (t, e) => { if (e.target === t) closeOv(); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#ov').innerHTML) closeOv(); });
 
 /* ---------- lead drawer ---------- */
-A.openLead = (t, e) => { if (e.target.closest('input,a,select')) return; ui.cur = t.dataset.id; drawer(); };
+A.openLead = (t, e) => { if (e.target.closest('input,a,select,button,label')) return; ui.cur = t.dataset.id; drawer(); };
 const curLead = () => S.leads.find((x) => x.id === ui.cur);
 
 function drawer() {
@@ -334,3 +362,127 @@ A.dDel = async () => {
   S.leads = S.leads.filter((x) => x.id !== l.id); closeOv(); chrome(); renderLeadsTable();
 };
 A.dToReplies = () => { const id = ui.cur; closeOv(); go('replies', { replyLead: id, replyFilter: 'all' }); };
+
+/* ---------- selection and delete ---------- */
+const sel = () => (ui.sel ||= new Set());
+const visibleRows = () => {
+  const q = ui.query.toLowerCase();
+  return S.leads.filter((l) => (!q || `${l.name} ${l.category} ${l.address} ${l.email} ${l.website}`.toLowerCase().includes(q)) && leadMatches(l, ui.filter)).sort((a, b) => (isHot(b) ? 1 : 0) - (isHot(a) ? 1 : 0));
+};
+const QS = [
+  ['all', 'Everything shown'], ['fresh', 'Not emailed yet'], ['nothot', 'Everything that is not hot (keeps emailed)'], ['noemail', 'No email address'],
+  ['hassite', 'Has a website'], ['decent', 'Decent sites (score under 25)'], ['blocked', 'Site blocked or unchecked'], ['lastfind', 'From my last search'], ['invert', 'Invert selection'], ['none', 'Clear selection'],
+];
+function renderSel() {
+  const q = $('#qsel'); if (!q) return;
+  const keep = ui.sel ? [...ui.sel].filter((id) => S.leads.some((l) => l.id === id)) : [];
+  ui.sel = new Set(keep);
+  if (!q.options.length) q.innerHTML = '<option value="">Select…</option>' + QS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+  const vis = visibleRows(), n = ui.sel.size, inView = vis.filter((l) => ui.sel.has(l.id)).length;
+  const all = $('#selAll');
+  if (all) { all.checked = vis.length > 0 && inView === vis.length; all.indeterminate = inView > 0 && inView < vis.length; }
+  document.querySelectorAll('#tb input.sel').forEach((c) => { c.checked = ui.sel.has(c.dataset.id); c.closest('tr').classList.toggle('picked', c.checked); });
+  const bar = $('#selbar');
+  bar.classList.toggle('hide', !n);
+  const hidden = n - inView;
+  bar.innerHTML = n ? `<b>${n}</b> selected${hidden > 0 ? ` <span class="hint">(${hidden} hidden by the filter)</span>` : ''}
+    <button class="btn s d" data-act="bulkDelAsk">${ico('trash')} Delete</button><button class="btn s g" data-act="selNone">Clear</button>` : '';
+}
+A.selRow = (t, e) => {
+  const id = t.dataset.id, rows = visibleRows().map((l) => l.id);
+  if (e.shiftKey && ui.lastSel && rows.includes(ui.lastSel) && rows.includes(id)) {
+    const a = rows.indexOf(ui.lastSel), b = rows.indexOf(id);
+    rows.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => (t.checked ? sel().add(x) : sel().delete(x)));
+  } else (t.checked ? sel().add(id) : sel().delete(id));
+  ui.lastSel = id; renderSel();
+};
+A.selAll = (t) => { visibleRows().forEach((l) => (t.checked ? sel().add(l.id) : sel().delete(l.id))); renderSel(); };
+A.selNone = () => { ui.sel = new Set(); renderSel(); };
+C.quickSel = (s) => {
+  const v = s.value; s.value = '';
+  const vis = visibleRows(), pick = (fn) => { ui.sel = new Set(vis.filter(fn).map((l) => l.id)); };
+  const last = new Set((ui.lastFind && ui.lastFind.ids) || []);
+  if (v === 'all') pick(() => true);
+  else if (v === 'none') ui.sel = new Set();
+  else if (v === 'fresh') pick((l) => ['new', 'drafted'].includes(l.status));
+  else if (v === 'nothot') pick((l) => !isHot(l) && !contacted(l));
+  else if (v === 'noemail') pick((l) => !validEmail(l.email) && !contacted(l));
+  else if (v === 'hassite') pick((l) => !!l.website && !contacted(l));
+  else if (v === 'decent') pick((l) => !!l.audit && !l.audit.unverified && l.audit.score < 25 && !contacted(l));
+  else if (v === 'blocked') pick((l) => !contacted(l) && ((l.audit && l.audit.unverified) || (l.website && !l.audit) || (!l.website && !l.web)));
+  else if (v === 'lastfind') pick((l) => last.has(l.id));
+  else if (v === 'invert') ui.sel = new Set(vis.filter((l) => !ui.sel.has(l.id)).map((l) => l.id));
+  renderSel();
+  const n = ui.sel.size; if (v !== 'none') toast(n ? `${n} selected` : 'Nothing matched that');
+};
+async function deleteLeads(ids, dismiss) {
+  const removed = S.leads.filter((l) => ids.includes(l.id));
+  await api('leads-bulk', { method: 'POST', body: { action: 'delete', ids, dismiss } });
+  const gone = new Set(ids); S.leads = S.leads.filter((l) => !gone.has(l.id)); ids.forEach((id) => sel().delete(id));
+  chrome(); if ($('#tb')) renderLeadsTable();
+  toastAct(`Deleted ${removed.length} lead${removed.length === 1 ? '' : 's'}`, 'Undo', async () => {
+    const r = await api('leads-undo', { method: 'POST', body: {} });
+    S = await api('state'); chrome(); if ($('#tb')) renderLeadsTable(); toast(`Restored ${r.restored}`);
+  }, 12000);
+}
+A.rowDel = (t) => deleteLeads([t.dataset.id], true).catch((e) => toast(e.message, 4500));
+A.bulkDelAsk = () => {
+  const ls = S.leads.filter((l) => sel().has(l.id)); if (!ls.length) return;
+  const sent = ls.filter(contacted).length, names = ls.slice(0, 5).map((l) => esc(l.name)).join(', ');
+  $('#ov').innerHTML = `<div class="scrim c" data-act="closeBg"><div class="card modal stack">
+    <div class="dh"><h2>Delete ${ls.length} lead${ls.length === 1 ? '' : 's'}?</h2><div class="sp"></div><button class="x" data-act="closeOv" aria-label="Close">×</button></div>
+    <div class="hint">${names}${ls.length > 5 ? ` and ${ls.length - 5} more` : ''}</div>
+    ${sent ? `<div class="banner" style="margin:0"><b>${sent}</b> of these ${sent === 1 ? 'was' : 'were'} already emailed. Their history goes with them.</div>` : ''}
+    <label class="chk"><input type="checkbox" id="delDismiss" checked> Don't bring these back when I search again</label>
+    <div class="acts"><button class="btn d" data-act="bulkDelGo">${ico('trash')} Delete ${ls.length}${sent ? ' (including emailed)' : ''}</button><button class="btn" data-act="closeOv">Cancel</button></div>
+    <div class="hint">You can undo right after.</div></div></div>`;
+};
+A.bulkDelGo = (btn) => act(btn, async () => { const dismiss = $('#delDismiss').checked, ids = [...sel()]; closeOv(); await deleteLeads(ids, dismiss); });
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Delete') && ui.sel && ui.sel.size && $('#tb') && !$('#ov').innerHTML.trim() && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) { e.preventDefault(); A.bulkDelAsk(); }
+});
+A.dDel = async () => {
+  const l = curLead(); if (!l) return;
+  closeOv(); await deleteLeads([l.id], true).catch((e) => toast(e.message, 4500));
+};
+
+/* ---------- website check pipeline ---------- */
+const PIPE = { stop: false, on: false };
+A.stopPipe = () => { PIPE.stop = true; };
+async function pool(items, n, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: n }, async () => { while (i < items.length && !PIPE.stop) { const k = i++; await fn(items[k], k); } }));
+}
+async function checkAndAudit(ids, say) {
+  PIPE.stop = false; PIPE.on = true;
+  const st = { total: ids.length, checked: 0, site: 0, none: 0, social: 0, unsure: 0, audited: 0, poor: 0 };
+  const line = (ph) => say(`${ph} · ${st.checked}/${st.total} checked · <b>${st.none}</b> no site · ${st.social} social only · ${st.site} have a site${st.audited ? ` (${st.poor} poor)` : ''} <button class="btn s" data-act="stopPipe">Stop</button>`);
+  try {
+    const todo = ids.filter((id) => { const l = S.leads.find((x) => x.id === id); return l && !l.website; });
+    const chunks = []; for (let i = 0; i < todo.length; i += 2) chunks.push(todo.slice(i, i + 2));
+    st.total = todo.length;
+    await pool(chunks, 2, async (ch) => {
+      try {
+        const r = await api('verify', { method: 'POST', body: { ids: ch, city: store.get('city', '') } });
+        r.leads.forEach((l) => { setLead(l); st.checked++; const s = l.web && l.web.status; if (s === 'site') st.site++; else if (s === 'none') st.none++; else if (s === 'social') st.social++; else st.unsure++; if ($('#tb')) patchRow(l); });
+      } catch { st.checked += ch.length; st.unsure += ch.length; }
+      line('Checking websites');
+    });
+    const need = ids.filter((id) => { const l = S.leads.find((x) => x.id === id); return l && l.website && !l.audit; });
+    const ach = []; for (let i = 0; i < need.length; i += 3) ach.push(need.slice(i, i + 3));
+    await pool(ach, 2, async (ch) => {
+      try { const r = await api('audit', { method: 'POST', body: { ids: ch } }); r.leads.forEach((l) => { setLead(l); st.audited++; if (l.audit.score >= 40 && !l.audit.unverified) st.poor++; if ($('#tb')) patchRow(l); }); } catch {}
+      line('Auditing sites');
+    });
+  } finally { PIPE.on = false; }
+  return st;
+}
+const pipeSay = (h) => { const e = $('#findprog'); if (e) e.innerHTML = h; };
+A.bulkVerify = (btn) => bulk(btn, async () => {
+  if (PIPE.on) return toast('A check is already running');
+  const ids = S.leads.filter((l) => !l.website && (!l.web || l.web.status === 'unsure') && !contacted(l)).map((l) => l.id);
+  if (!ids.length) return toast('Every lead without a website is already checked');
+  const st = await checkAndAudit(ids, pipeSay);
+  pipeSay(''); chrome(); renderLeadsTable();
+  toast(`Checked ${st.checked}: ${st.none + st.social} have no real site, ${st.site} had one`, 6000);
+});

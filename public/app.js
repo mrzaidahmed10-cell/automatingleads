@@ -34,6 +34,7 @@ const IC = {
   moon: '<path d="M21 13A9 9 0 1111 3a7 7 0 0010 10z"/>',
   mapPin: '<path d="M12 21s7-6.2 7-11a7 7 0 10-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
   rows: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   out: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
@@ -50,8 +51,18 @@ const C = {}; // change actions
 
 /* ---------- api ---------- */
 const HDR = { 'content-type': 'application/json', 'x-requested-by': 'flightline' };
+function toastAct(m, label, fn, ms = 10000) {
+  const t = $('#toast');
+  t.textContent = '';
+  const s = document.createElement('span'); s.textContent = m;
+  const b = document.createElement('button'); b.className = 'tb'; b.textContent = label;
+  b.onclick = async () => { t.classList.remove('on', 'act'); try { await fn(); } catch (e) { toast(e.message, 4500); } };
+  t.append(s, b); t.classList.add('on', 'act');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on', 'act'), ms);
+}
 function toast(m, ms = 3200) {
   const t = $('#toast');
+  t.classList.remove('act');
   t.textContent = m; t.classList.add('on');
   clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), ms);
 }
@@ -379,6 +390,8 @@ function vSettings() {
           <div class="check ${cf.email ? 'done' : ''}"><span class="dot">${cf.email ? ico('check') : ''}</span><span>Email sending ${cf.email ? '' : '(missing secrets, see README)'}</span></div>
           <div class="check ${cf.groq ? 'done' : ''}"><span class="dot">${cf.groq ? ico('check') : ''}</span><span>AI writer ${cf.groq ? '' : '(add GROQ_API_KEY)'}</span></div>
           <div class="check done"><span class="dot">${ico('check')}</span><span>Lead finder (OpenStreetMap, no key needed)</span></div>
+          <div class="check ${cf.places ? 'done' : ''}"><span class="dot">${cf.places ? ico('check') : ''}</span><span>Google Places ${cf.places ? '' : '(optional, finds far more businesses. Add GOOGLE_PLACES_KEY)'}</span></div>
+          <div class="check ${cf.search ? 'done' : ''}"><span class="dot">${cf.search ? ico('check') : ''}</span><span>Brave Search ${cf.search ? '' : '(optional, stronger website checks. Add BRAVE_API_KEY)'}</span></div>
           <div class="acts" style="margin-top:10px"><button class="btn s" data-act="testAI">${ico('spark')} Test AI</button></div>
           <div id="aiTest" class="hint" style="margin-top:8px"></div>
           <div class="hint" style="margin-top:10px">API keys live in Cloudflare secrets and never reach this page.</div>

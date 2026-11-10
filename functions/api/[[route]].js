@@ -1,6 +1,7 @@
 import { cleanEmail, json, loadDB, saveDB, isEmail, today, cap, MAX_LEADS, DEFAULT_SETTINGS, sessionCookie, revokeAllSessions } from '../../lib/util.js';
 import { findBusinesses } from '../../lib/osm.js';
 import { auditSite } from '../../lib/audit.js';
+import { verifySite } from '../../lib/verify.js';
 import { draftEmail, draftReply, runAgent, testAI } from '../../lib/ai.js';
 import { sendEmail, emailReady, renderEmail } from '../../lib/email.js';
 
@@ -13,10 +14,12 @@ const newLead = (o) => ({
   category: cap(o.category, 60),
   address: cap(o.address, 200),
   phone: cap(o.phone, 40),
+  rating: Math.min(Math.max(Number(o.rating) || 0, 0), 5),
+  reviews: Math.min(Math.max(parseInt(o.reviews, 10) || 0, 0), 1000000),
   email: isEmail(cleanEmail(o.email)) ? cleanEmail(o.email) : '',
   website: cap(o.website, 300).trim(),
   notes: cap(o.notes, 2000),
-  source: o.source === 'osm' ? 'osm' : 'manual',
+  source: ['osm', 'google'].includes(o.source) ? o.source : 'manual',
   status: 'new',
   audit: null,
   draft: null,
@@ -51,6 +54,9 @@ export async function onRequest({ request, env, params }) {
     if (a === 'state' && m === 'GET') return await state(env);
     if (a === 'discover' && m === 'POST') return await discover(env, body);
     if (a === 'discover-import' && m === 'POST') return await discoverImport(env, body);
+    if (a === 'verify' && m === 'POST') return await verify(env, body);
+    if (a === 'leads-bulk' && m === 'POST') return await bulkLeads(env, body);
+    if (a === 'leads-undo' && m === 'POST') return await undoDelete(env);
     if (a === 'leads' && !b && m === 'POST') return await addLead(env, body);
     if (a === 'leads' && b && m === 'PATCH') return await patchLead(env, b, body);
     if (a === 'leads' && b && m === 'DELETE') return await deleteLead(env, b);
@@ -79,25 +85,30 @@ export async function onRequest({ request, env, params }) {
 /* ---------------- shared helpers ---------------- */
 function mergeFound(db, items) {
   let added = 0,
-    dupes = 0;
+    dupes = 0,
+    hidden = 0;
+  const ids = [];
+  const gone = new Set(db.dismissed || []);
   for (const f of items) {
     if (db.leads[f.id]) {
       dupes++;
+      continue;
+    }
+    if (gone.has(f.id)) {
+      hidden++; // deleted earlier with "don't bring back"
       continue;
     }
     if (Object.keys(db.leads).length >= MAX_LEADS) break;
     const lead = newLead(f);
     if (lead.email && db.suppress.includes(lead.email)) lead.status = 'unsub';
     db.leads[f.id] = lead;
+    ids.push(f.id);
     added++;
   }
-  return { added, dupes };
+  return { added, dupes, hidden, ids };
 }
 
-async function runAudit(db, id) {
-  const lead = db.leads[id];
-  if (!lead?.website) return null;
-  const r = await auditSite(lead.website, { category: lead.category, name: lead.name });
+function applyAudit(db, lead, r) {
   lead.audit = { score: r.score, issues: r.issues, good: r.good || [], emails: r.emails || [], unverified: !!r.unverified, site: lead.website, ms: r.ms, checkedAt: r.checkedAt };
   if (!lead.email && r.email && !db.suppress.includes(r.email)) lead.email = r.email;
   return lead;
@@ -125,7 +136,7 @@ async function state(env) {
     templates: db.templates,
     sentToday: db.sent[today()] || 0,
     suppressed: db.suppress.length,
-    configured: { groq: !!env.GROQ_API_KEY, email: emailReady(env) },
+    configured: { groq: !!env.GROQ_API_KEY, email: emailReady(env), places: !!env.GOOGLE_PLACES_KEY, search: !!env.BRAVE_API_KEY },
     security: { weakPassword: String(env.DASH_PASSWORD || '').length < 12, separateSecret: !!env.SESSION_SECRET },
   });
 }
@@ -138,18 +149,18 @@ async function discover(env, p) {
     found = await findBusinesses({
       city: String(p.city).slice(0, 120),
       category: p.category || 'all',
-      mode: p.mode === 'has_site' ? 'has_site' : 'none',
+      mode: ['has_site', 'any'].includes(p.mode) ? p.mode : 'none',
       radiusKm: Number(p.radius) || 15,
-    });
+    }, env);
   } catch (e) {
     // Tell the page to retry straight from the browser, which map servers treat far better than a datacenter.
     return json({ error: e.message, clientFallback: true }, 502);
   }
   const { items, debug } = found;
   const db = await loadDB(env);
-  const { added, dupes } = mergeFound(db, items);
+  const { added, dupes, hidden, ids } = mergeFound(db, items);
   await saveDB(env, db);
-  return json({ found: items.length, added, dupes, debug });
+  return json({ found: items.length, added, dupes, hidden, ids: ids.slice(0, 400), debug });
 }
 
 // Leads found by the browser itself when the server could not reach the map servers.
@@ -164,9 +175,9 @@ async function discoverImport(env, p) {
     items.push({ id, name, category: cap(x.category, 60), address: cap(x.address, 200), phone: cap(x.phone, 40), email: isEmail(email) ? email : '', website: cap(x.website, 300), source: 'osm' });
   }
   const db = await loadDB(env);
-  const { added, dupes } = mergeFound(db, items);
+  const { added, dupes, hidden, ids } = mergeFound(db, items);
   await saveDB(env, db);
-  return json({ found: items.length, added, dupes, debug: { place: cap(p.place, 160), raw: items.length, server: 'your browser' } });
+  return json({ found: items.length, added, dupes, hidden, ids: ids.slice(0, 400), debug: { place: cap(p.place, 160), raw: items.length, server: 'your browser' } });
 }
 
 async function addLead(env, p) {
@@ -230,6 +241,47 @@ function applyPatch(db, lead, p) {
   }
 }
 
+// Delete many at once. "dismiss" remembers found businesses so the finder does not bring them back.
+async function bulkLeads(env, p) {
+  if (p.action !== 'delete') throw new Error('Unknown bulk action.');
+  const ids = [...new Set((Array.isArray(p.ids) ? p.ids : []).map(String))].slice(0, 2000);
+  const db = await loadDB(env);
+  const removed = [];
+  for (const id of ids) {
+    const l = db.leads[id];
+    if (!l) continue;
+    removed.push(l);
+    delete db.leads[id];
+  }
+  if (p.dismiss) {
+    const gone = new Set(db.dismissed || []);
+    for (const l of removed) if (l.source === 'osm' || l.source === 'google') gone.add(l.id);
+    db.dismissed = [...gone].slice(-5000);
+  }
+  await saveDB(env, db);
+  if (removed.length) await env.LEADS.put('trash', JSON.stringify({ at: Date.now(), leads: removed }), { expirationTtl: 3600 });
+  return json({ deleted: removed.length });
+}
+
+// Undo for the most recent delete. The removed leads wait in their own KV key for an hour.
+async function undoDelete(env) {
+  const raw = await env.LEADS.get('trash');
+  if (!raw) throw new Error('Nothing to undo. Undo only lasts an hour.');
+  const trash = JSON.parse(raw);
+  const db = await loadDB(env);
+  let restored = 0;
+  for (const l of trash.leads || []) {
+    if (!l || !l.id || db.leads[l.id] || Object.keys(db.leads).length >= MAX_LEADS) continue;
+    db.leads[l.id] = l;
+    restored++;
+  }
+  if (db.dismissed) db.dismissed = db.dismissed.filter((d) => !db.leads[d]);
+  await saveDB(env, db);
+  if (env.LEADS.delete) await env.LEADS.delete('trash');
+  else await env.LEADS.put('trash', '');
+  return json({ restored });
+}
+
 async function deleteLead(env, id) {
   const db = await loadDB(env);
   delete db.leads[id];
@@ -237,12 +289,46 @@ async function deleteLead(env, id) {
   return json({ ok: true });
 }
 
-async function audit(env, p) {
-  const ids = (p.ids || []).slice(0, 5);
+// Works out whether leads really lack a website. The slow network part runs first with no database lock,
+// then the results are applied to a freshly loaded copy so parallel calls never overwrite each other.
+async function verify(env, p) {
+  const ids = (Array.isArray(p.ids) ? p.ids : []).slice(0, 3).map(String);
+  const city = cap(p.city, 120);
+  const snap = await loadDB(env);
+  const todo = ids.map((id) => snap.leads[id]).filter(Boolean);
+  const outs = await Promise.all(todo.map((l) => verifySite(env, { name: l.name, phone: l.phone, address: l.address, website: l.website }, city).catch((e) => ({ status: 'unsure', evidence: [String(e.message).slice(0, 120)], checkedAt: Date.now() }))));
   const db = await loadDB(env);
-  const results = await Promise.all(ids.map((id) => runAudit(db, id)));
+  const leads = [];
+  todo.forEach((l, i) => {
+    const lead = db.leads[l.id];
+    if (!lead) return;
+    const r = outs[i];
+    lead.web = { status: r.status, source: r.source || '', confidence: r.confidence || '', evidence: (r.evidence || []).slice(0, 3), social: r.social || '', checkedAt: r.checkedAt };
+    if (r.status === 'site' && r.source !== 'listed' && !lead.website) {
+      lead.website = cap(r.site, 300);
+      lead.audit = null;
+    }
+    leads.push(lead);
+  });
   await saveDB(env, db);
-  return json({ leads: results.filter(Boolean) });
+  return json({ leads });
+}
+
+async function audit(env, p) {
+  const ids = (Array.isArray(p.ids) ? p.ids : []).slice(0, 5).map(String);
+  const snap = await loadDB(env);
+  const todo = ids.map((id) => snap.leads[id]).filter((l) => l?.website);
+  const rs = await Promise.all(todo.map((l) => auditSite(l.website, { category: l.category, name: l.name })));
+  const db = await loadDB(env); // fresh copy, so parallel calls never overwrite each other
+  const out = [];
+  todo.forEach((t, i) => {
+    const lead = db.leads[t.id];
+    if (!lead || lead.website !== t.website) return;
+    applyAudit(db, lead, rs[i]);
+    out.push(lead);
+  });
+  await saveDB(env, db);
+  return json({ leads: out });
 }
 
 /* ---------------- AI ---------------- */
@@ -449,9 +535,9 @@ function buildTools(env, db, pending) {
         const { items, debug } = await findBusinesses({
           city,
           category: cats.includes(a.category) ? a.category : 'all',
-          mode: a.mode === 'has_site' ? 'has_site' : 'none',
+          mode: ['has_site', 'any'].includes(a.mode) ? a.mode : 'none',
           radiusKm: tn(a.radius_km ?? a.radius) || 15,
-        });
+        }, env);
         const { added, dupes } = mergeFound(db, items);
         const sample = items.slice(0, 8).map((i) => i.name);
         return { found: items.length, added, already_had: dupes, place: debug.place, sample, note: `Added ${added} new leads near ${debug.place}.` };
@@ -460,8 +546,25 @@ function buildTools(env, db, pending) {
     audit_leads: {
       spec: { name: 'audit_leads', description: 'Audit up to 5 leads\' websites (also finds contact emails).', parameters: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' } } }, required: ['ids'] } },
       run: async (a) => {
-        const ls = await Promise.all((a.ids || []).slice(0, 5).map((id) => runAudit(db, id)));
+        const ls = (await Promise.all((a.ids || []).slice(0, 5).map(async (id) => {
+          const l = db.leads[String(id)];
+          if (!l?.website) return null;
+          return applyAudit(db, l, await auditSite(l.website, { category: l.category, name: l.name }));
+        }))).filter(Boolean);
         return { audited: ls.filter(Boolean).map((l) => ({ id: l.id, name: l.name, score: l.audit.score, issues: l.audit.issues, email: l.email })) };
+      },
+    },
+    verify_leads: {
+      spec: { name: 'verify_leads', description: 'Check whether up to 3 leads really have no website (domain checks + web search). Sets the website if one is found.', parameters: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' } }, city: { type: 'string' } }, required: ['ids'] } },
+      run: async (a) => {
+        const ls = (a.ids || []).slice(0, 3).map((id) => db.leads[String(id)]).filter(Boolean);
+        const rs = await Promise.all(ls.map((l) => verifySite(env, { name: l.name, phone: l.phone, address: l.address, website: l.website }, String(a.city || '')).catch(() => null)));
+        return { verified: ls.map((l, i) => {
+          const r = rs[i]; if (!r) return { id: l.id, name: l.name, status: 'unsure' };
+          l.web = { status: r.status, source: r.source || '', confidence: r.confidence || '', evidence: (r.evidence || []).slice(0, 3), social: r.social || '', checkedAt: r.checkedAt };
+          if (r.status === 'site' && r.source !== 'listed' && !l.website) { l.website = cap(r.site, 300); l.audit = null; }
+          return { id: l.id, name: l.name, status: r.status, site: l.website || '', evidence: r.evidence };
+        }) };
       },
     },
     draft_email: {

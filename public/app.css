@@ -337,3 +337,30 @@ input,select,textarea{border-color:var(--line)}
 :root:not([data-theme=dark]) .side{background:linear-gradient(180deg,rgb(16 21 36 / .9),rgb(8 10 18 / .88))}
 :root[data-theme=dark] .side{background:linear-gradient(180deg,rgb(18 22 34 / .72),rgb(6 8 14 / .7))}
 .side .quota{background:rgb(255 255 255 / .07);border-color:rgb(255 255 255 / .1);border-radius:14px}
+
+/* selection + delete */
+th.ck,td.ck{width:38px;padding-right:0}
+td.dl,th.dl{width:44px;text-align:right;padding-left:0}
+input[type=checkbox]{width:17px;height:17px;padding:0;accent-color:var(--acc);cursor:pointer;border-radius:5px;box-shadow:none;vertical-align:middle}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:500;color:var(--ink);cursor:pointer;margin:0}
+.chk input{margin-top:2px;flex:none}
+tr.lead.picked{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.qsel{width:auto;min-width:150px;padding:5px 30px 5px 12px;border-radius:999px;font-size:13px;font-weight:600}
+.selbar{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;padding:3px 4px 3px 12px;border-radius:999px;background:var(--acc2);color:var(--acc);font-size:13px}
+.selbar b{font-weight:800}
+.rowdel{opacity:.55}
+tr.lead:hover .rowdel,.rowdel:focus-visible{opacity:1;color:var(--bad)}
+@media(pointer:coarse){.rowdel{opacity:1}input[type=checkbox]{width:22px;height:22px}}
+#toast.act{pointer-events:auto;display:flex;gap:16px;align-items:center;padding:8px 8px 8px 16px}
+#toast .tb{border:0;border-radius:999px;padding:5px 14px;font-weight:800;cursor:pointer;background:var(--bg);color:var(--ink)}
+@media(max-width:640px){
+ table.rt tr.lead{position:relative;padding-left:44px;padding-right:44px}
+ table.rt td.ck{position:absolute;left:12px;top:14px;width:auto;padding:0}
+ table.rt td.dl{position:absolute;right:6px;top:8px;width:auto;padding:0}
+ .tools .qsel{flex:1}
+}
+.row>.fmode{flex:0 0 270px}
+.seg{min-width:0}
+.stack>.chk{margin-top:12px}
+.modal.stack>.hint{margin-top:2px}
+@media(max-width:640px){.row>.fmode{flex:1 1 100%}}

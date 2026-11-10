@@ -16,7 +16,17 @@ The controls (top bar tools, mobile tab bar, search, segmented switches) are rea
 Rebuild only if you edit `glass-src/entry.jsx`: `cd glass-src && npm install && npm run build`. Cloudflare does not need to build anything.
 
 ## Lead finder
-Searches OpenStreetMap. The server asks every map mirror at once and takes the first answer, then falls back to a second source. If the server still cannot reach the map, your browser runs the search itself and the dashboard saves the results. There is no send cap by default. Daily cap and the gap between bulk sends are optional in Settings.
+Searches OpenStreetMap (and Google Places if you add a key). The server asks every map mirror at once and takes the first answer, then falls back to a second source. If the server still cannot reach the map, your browser runs the search itself and the dashboard saves the results. There is no send cap by default. Daily cap and the gap between bulk sends are optional in Settings.
+
+**Verification.** OpenStreetMap often has no website tag for businesses that do have one, so "no website" in the map data is only a hint. After a search, FlightLine checks each result: it tries likely domains from the business name, then does a web search, and only accepts a page that matches the business (name plus phone, street or city). Parked pages are ignored. Results:
+- **No website ✓ verified**: nothing found. Marked **Hot**.
+- **Social page only**: just Facebook/Instagram etc. Marked **Hot**.
+- **Found online**: the site is saved to the lead and audited.
+Use **Verify websites** on the Leads page to re-check any leads, and the **Unchecked** and **Hot** filters to sort them. Searches are checked in small batches because Cloudflare's free plan limits outbound requests per call.
+
+Optional secrets that improve results: `GOOGLE_PLACES_KEY` (many more businesses, with ratings and review counts; Google may require billing) and `BRAVE_API_KEY` (more reliable web search than the default, which can get blocked on shared server IPs).
+
+**Deleting leads.** Tick rows (shift-click selects a range, the header box selects all), or use **Select…** for presets such as "no website" or "poor sites". Press Delete or use the bar to remove them. The dialog has a "don't bring these back when I search again" option, and **Undo** restores them for about an hour. The trash icon on a row deletes just that one.
 
 ## Security
 - Sign-in sets a signed, HttpOnly, SameSite=Strict `__Host-` cookie that expires in 7 days. "Sign out of all devices" (Settings) revokes every session.
@@ -41,6 +51,7 @@ Searches OpenStreetMap. The server asks every map mirror at once and takes the f
 | `EMAIL_API_KEY`, `EMAIL_FROM` | For Resend/SendGrid. `EMAIL_FROM` like `Zaid <zaid@yourdomain.com>` on a verified domain |
 | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` | For `EMAIL_PROVIDER=gmail` (Gmail always sends as your account) |
 | `GROQ_MODEL` | optional, forces a specific Groq model |
+| `GOOGLE_PLACES_KEY`, `BRAVE_API_KEY` | optional, see Lead finder |
 
 5. Redeploy (bindings and secrets apply on the next deployment), open the site, sign in, and fill **Settings** (name, your email, your offer, and notes on pricing/process for the AI). Use **Settings → Test AI** to confirm Groq works and see which models your key can use.
 
