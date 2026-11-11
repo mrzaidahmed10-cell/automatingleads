@@ -61,11 +61,11 @@
     const el = s.el;
     const speed = Math.hypot(s.vx, s.vy); // px/s of the element itself, so the bounce also fringes
     const thin = s.st; // stretch along the pull, thinning across it
-    const along = 1 + thin, across = 1 / Math.pow(1 + Math.max(thin, -0.4), 0.85);
+    const along = 1 + thin, across = 1 / Math.pow(1 + Math.max(thin, -0.4), 0.7);
     const press = 1 - 0.07 * s.pr;
     el.style.transform = `translate3d(${s.ox.toFixed(2)}px,${s.oy.toFixed(2)}px,0) rotate(${s.ang.toFixed(4)}rad) scale(${(along * press).toFixed(4)},${(across * press).toFixed(4)}) rotate(${(-s.ang).toFixed(4)}rad)`;
     // dispersion: colour fringes split along the motion, wider when moving fast
-    const d = Math.min(3.2, speed / 380 + Math.abs(thin) * 5 + Math.abs(s.pr) * 0.5);
+    const d = Math.min(2.2, speed / 260 + Math.abs(thin) * 8 + Math.abs(s.pr) * 0.5);
     const dx = (s.vx === 0 && s.vy === 0 ? Math.cos(s.ang) : s.vx / (speed || 1)) * d, dy = (s.vx === 0 && s.vy === 0 ? Math.sin(s.ang) : s.vy / (speed || 1)) * d;
     el.style.filter = d > 0.12 ? `drop-shadow(${dx.toFixed(2)}px ${dy.toFixed(2)}px 0 rgb(255 60 110 / .40)) drop-shadow(${(-dx).toFixed(2)}px ${(-dy).toFixed(2)}px 0 rgb(60 150 255 / .40))` : '';
   }
@@ -104,13 +104,12 @@
       const dx = e.clientX - s.x0, dy = e.clientY - s.y0, dist = Math.hypot(dx, dy);
       if (dist > 3) s.moved = true;
       // rubber band: follows the pointer but with growing resistance
-      const R = 46 + Math.min(s.w, 220) * 0.22;
-      const rub = (d) => R * Math.tanh(d / (R * 1.9)) * 0.9 * s.g;
-      s.tx = rub(dx); s.ty = rub(dy);
-      s.ang = dist > 1 ? Math.atan2(dy, dx) : s.ang;
+      const R = 14 + Math.min(s.w, 220) * 0.08;
+      const rub = (d) => R * Math.tanh(d / (R * 2.2)) * s.g;
+      s.tx = rub(dx); s.ty = 0; s.ang = 0; // side to side only
       // thinning: more the farther you pull, and a lot more the faster you pull
       const size = Math.max(s.w, s.h);
-      s.tst = Math.min(0.5, (dist / (size * 2.4) + s.spd * 0.11) * s.g);
+      s.tst = Math.min(0.14, (Math.abs(dx) / (size * 5) + s.spd * 0.03) * s.g);
       kick();
     }
   }
@@ -120,9 +119,9 @@
       if (!s.down || (e && e.pointerId !== s.id)) continue;
       s.down = false; s.tx = 0; s.ty = 0; s.tst = 0; s.tpr = 0;
       // let go with the momentum of the pull, so it flings past and wobbles back
-      s.vx += Math.cos(s.ang) * s.spd * 260 * s.g * (s.moved ? 1 : 0);
-      s.vy += Math.sin(s.ang) * s.spd * 260 * s.g * (s.moved ? 1 : 0);
-      s.sv += s.spd * 3 * s.g;
+      s.vx += Math.sign(s.px - s.x0) * s.spd * 70 * s.g * (s.moved ? 1 : 0);
+      
+      s.sv += s.spd * 0.8 * s.g;
       s.pv += s.moved ? 0 : 6; // a plain tap gets a small pop
       if (s.moved) suppressClick(s.el);
     }
