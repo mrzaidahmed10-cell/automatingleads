@@ -364,3 +364,42 @@ tr.lead:hover .rowdel,.rowdel:focus-visible{opacity:1;color:var(--bad)}
 .stack>.chk{margin-top:12px}
 .modal.stack>.hint{margin-top:2px}
 @media(max-width:640px){.row>.fmode{flex:1 1 100%}}
+/* contact finder bits */
+.soc{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}
+.soc a{font-size:11.5px;font-weight:600;color:var(--mut);text-decoration:none;border-bottom:1px dotted var(--line)}
+.soc a:hover{color:var(--acc)}
+.mini{margin-top:5px;font:inherit;font-size:11.5px;font-weight:600;color:var(--acc);background:none;border:0;padding:2px 0;cursor:pointer}
+.mini:hover{text-decoration:underline}
+td .alts{margin-top:5px;gap:4px}
+td .alts .chip{font-size:11.5px;padding:2px 8px;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.alts .chip small{opacity:.6;margin-left:4px;font-weight:500}
+.nof{margin-top:4px;font-size:11.5px}
+
+/* ---------- liquid character: dispersion rims, pointer light, drifting orbs, pull feel ---------- */
+:root{--fr:inset 1px 1px 0 rgb(255 110 150 / .26),inset -1px -1px 0 rgb(90 160 255 / .30),inset 0 0 14px -6px rgb(160 140 255 / .30)}
+:root[data-theme=dark]{--fr:inset 1px 1px 0 rgb(255 110 150 / .20),inset -1px -1px 0 rgb(90 160 255 / .24),inset 0 0 14px -6px rgb(130 120 255 / .22)}
+.card{box-shadow:inset 0 1px 0 var(--glass-hi),var(--fr),0 12px 32px -16px var(--glass-shade)}
+.top{box-shadow:inset 0 1px 0 var(--glass-hi),var(--fr),0 10px 30px -14px var(--glass-shade)}
+.side{box-shadow:inset 0 1px 0 rgb(255 255 255 / .08),var(--fr),0 18px 50px -20px rgb(0 0 0 / .6)}
+.btn:not(.g):not(.p){box-shadow:inset 0 1px 0 var(--glass-hi),var(--fr),0 1px 2px var(--glass-shade)}
+.drawer,.modal,.pal{box-shadow:inset 0 1px 0 var(--glass-hi),var(--fr),0 30px 80px -20px rgb(0 0 0 / .5)}
+.todo,.kpi{box-shadow:inset 0 1px 0 var(--glass-hi),var(--fr)}
+.drawer .card,.modal .card{box-shadow:inset 0 1px 0 var(--glass-hi)}
+
+/* light that follows the pointer */
+.card[data-lit],.top[data-lit],.side[data-lit],.drawer[data-lit],.modal[data-lit],.kpi[data-lit]{background-image:radial-gradient(280px circle at var(--mx) var(--my),rgb(255 255 255 / .34),transparent 64%),conic-gradient(from 200deg at var(--mx) var(--my),rgb(255 120 160 / .06),rgb(255 210 130 / .05),rgb(130 255 200 / .05),rgb(130 180 255 / .07),rgb(200 130 255 / .06),rgb(255 120 160 / .06))}
+:root[data-theme=dark] .card[data-lit],:root[data-theme=dark] .top[data-lit],:root[data-theme=dark] .side[data-lit],:root[data-theme=dark] .drawer[data-lit],:root[data-theme=dark] .modal[data-lit],:root[data-theme=dark] .kpi[data-lit]{background-image:radial-gradient(280px circle at var(--mx) var(--my),rgb(255 255 255 / .09),transparent 64%),conic-gradient(from 200deg at var(--mx) var(--my),rgb(255 120 160 / .05),rgb(255 210 130 / .04),rgb(130 255 200 / .04),rgb(130 180 255 / .06),rgb(200 130 255 / .05),rgb(255 120 160 / .05))}
+
+/* glass orbs drifting behind everything */
+#aurora{--px:0px;--py:0px;overflow:hidden}
+#aurora .orb{position:absolute;left:var(--x);top:var(--y);width:var(--sz);height:var(--sz);border-radius:50%;opacity:.55;
+ background:radial-gradient(circle at 30% 26%,rgb(255 255 255 / .75),rgb(255 255 255 / 0) 30%),radial-gradient(circle at 50% 50%,color-mix(in srgb,var(--c) 46%,transparent),color-mix(in srgb,var(--c) 12%,transparent) 66%,transparent 71%);
+ box-shadow:inset -6px -8px 18px -8px rgb(255 255 255 / .35),inset 4px 6px 16px -6px color-mix(in srgb,var(--c) 40%,transparent);
+ translate:var(--px) var(--py);animation:orbf var(--d) ease-in-out var(--dl) infinite alternate}
+:root[data-theme=dark] #aurora .orb{opacity:.42}
+@keyframes orbf{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(5vmin,-7vmin,0) scale(1.1)}}
+
+/* pull feel */
+[data-jelly]{cursor:grabbing!important;-webkit-user-select:none;user-select:none;z-index:3}
+.btn,.chip,.nav a,.lg-button,.lg-tab-bar,.lg-segmented,.pill{-webkit-tap-highlight-color:transparent}
+@media(prefers-reduced-motion:reduce){#aurora .orb{animation:none}}

@@ -4,6 +4,13 @@ const FILTERS = [['all', 'All'], ['hot', 'Hot'], ['unver', 'Unchecked'], ['email
 // Worth pitching: not contacted yet, and either confirmed to have no real website or a poor one
 const isHot = (l) => ['new', 'drafted'].includes(l.status) && ((!l.website && !!l.web && ['none', 'social'].includes(l.web.status)) || (!!l.website && !!l.audit && !l.audit.unverified && l.audit.score >= 40));
 let busyBulk = false;
+const SORTS = {
+  smart: (a, b) => (isHot(b) ? 1 : 0) - (isHot(a) ? 1 : 0) || (validEmail(b.email) ? 1 : 0) - (validEmail(a.email) ? 1 : 0),
+  new: (a, b) => b.createdAt - a.createdAt,
+  name: (a, b) => a.name.localeCompare(b.name),
+  poor: (a, b) => (b.audit ? b.audit.score : -1) - (a.audit ? a.audit.score : -1),
+  rating: (a, b) => (b.reviews || 0) - (a.reviews || 0),
+};
 
 function leadMatches(l, f) {
   switch (f) {
@@ -34,6 +41,18 @@ const siteCell = (l) => {
   const sc = l.audit.score, c = sc >= 50 ? 'bad' : sc >= 25 ? 'warn' : 'ok';
   return a + `<br><span class="pill ${c}">${sc >= 50 ? 'Poor' : sc >= 25 ? 'Dated' : 'Decent'} · ${sc}</span>`;
 };
+
+const SOC = { facebook: 'Facebook', instagram: 'Instagram', yelp: 'Yelp', linkedin: 'LinkedIn', tiktok: 'TikTok' };
+const socialLinks = (l) => { const e = Object.entries(l.social || {}).filter(([k, v]) => SOC[k] && v); return e.length ? `<div class="soc">${e.map(([k, v]) => `<a href="${esc(href(v))}" target="_blank" rel="noopener noreferrer" aria-label="${esc(l.name)} on ${SOC[k]}">${SOC[k]}</a>`).join('')}</div>` : ''; };
+const SRC = { website: 'their site', search: 'web search', facebook: 'Facebook', yelp: 'Yelp' };
+function emailAlts(l) {
+  const c = l.contacts;
+  if (!c) return validEmail(l.email) ? '' : `<button class="mini" data-act="findOne" data-id="${esc(l.id)}">Find contact info</button>`;
+  const alts = (c.emails || []).filter((e) => e.email !== l.email).slice(0, 2);
+  if (alts.length) return `<div class="alts">${alts.map((e) => `<button class="chip" data-act="rowUse" data-id="${esc(l.id)}" data-v="${esc(e.email)}" title="From ${esc(SRC[e.source] || e.source)}. Click to use this one">${esc(e.email)}</button>`).join('')}</div>`;
+  if (!validEmail(l.email)) return `<div class="sub nof" title="${esc((c.notes || []).join('. '))}">No email found${c.reached?.length ? ' (looked at ' + c.reached.join(', ') + ')' : ''}</div>`;
+  return '';
+}
 const statusPill = (l) => {
   const m = { new: ['New', ''], drafted: ['Drafted', 'acc'], sent: ['Sent', 'ok'], replied: ['Replied', 'ok'], unsub: ['Do not contact', 'bad'], skip: ['Skipped', ''] }[l.status] || ['New', ''];
   return `<span class="pill ${m[1]}">${m[0]}</span>`;
@@ -59,6 +78,7 @@ function vLeads() {
           <div style="flex:0 0 auto;min-width:0"><button class="btn p" data-act="find">${ico('mapPin')} Find leads</button></div>
         </div>
         <label class="chk" style="margin-top:10px"><input type="checkbox" id="fAuto" ${store.get('auto', '1') === '1' ? 'checked' : ''}> Check every result for a real website, then audit the ones that have one <span class="hint">(OpenStreetMap often misses websites, so this is what separates real leads from false ones)</span></label>
+        <label class="chk" style="margin-top:6px"><input type="checkbox" id="fCon" ${store.get('con', '1') === '1' ? 'checked' : ''}> Also look up email, phone and social pages <span class="hint">(their site, web search, Facebook, Yelp)</span></label>
       </div>
       <div id="findres"></div>
     </div>
@@ -66,12 +86,15 @@ function vLeads() {
       <div class="tools"><div class="chips" id="chips"></div><div class="sp"></div><div id="qMount" class="qm"></div></div>
       <div class="tools">
         <select id="qsel" class="qsel" data-change="quickSel" aria-label="Quick select"></select>
+        <select id="sortSel" class="qsel" data-change="sortBy" aria-label="Sort leads">${[['smart', 'Best leads first'], ['new', 'Newest'], ['name', 'Name A–Z'], ['poor', 'Weakest site first'], ['rating', 'Most reviews']].map(([v, t]) => `<option value="${v}" ${(ui.sort || 'smart') === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
         <span id="selbar" class="selbar hide" role="group" aria-label="Selection"></span>
         <div class="sp"></div>
+        <button class="btn s g" data-act="exportCsv" title="Download your selection (or the current filter) as a spreadsheet">Export CSV</button>
         <button class="btn s" data-act="bulkVerify" title="Look for a website for every lead that has none listed">${ico('shield')} Verify websites</button>
+        <button class="btn s" data-act="bulkContacts" title="Look up email, phone and social pages for leads that still need them (uses your selection if you picked some)">${ico('mail')} Find contacts</button>
         <button class="btn s" data-act="bulkAudit">Audit sites</button>
-        <button class="btn s" data-act="bulkDraft">Draft for all with email</button>
-        <button class="btn s p" data-act="bulkSend">${ico('send')} Send all drafted</button>
+        <button class="btn s" data-act="bulkDraft" title="Write a draft for every new lead that has an email">Draft all</button>
+        <button class="btn s p" data-act="bulkSend">${ico('send')} Send drafted</button>
         <span class="hint" id="prog"></span>
       </div>
       <div class="tw"><table class="rt"><thead><tr><th class="ck"><input type="checkbox" id="selAll" data-act="selAll" aria-label="Select all shown"></th><th>Business</th><th>Website</th><th>Email</th><th>Status</th><th class="dl"></th></tr></thead><tbody id="tb"></tbody></table></div>
@@ -106,6 +129,7 @@ function renderFindRes() {
   const c = r.check;
   el.innerHTML = `<div class="hint" style="margin-top:14px">Searched <b>${esc(d.place || '')}</b> · ${d.raw ?? r.found} places found · <b style="color:var(--ok)">${r.added} new</b> · ${r.dupes} already in your list${r.hidden ? ' · ' + r.hidden + ' you deleted earlier' : ''}${d.chains ? ' · ' + d.chains + ' chains skipped' : ''}${d.google && !/^off/.test(d.google) ? ' · Google: ' + esc(d.google) : ''}</div>` +
     (c ? `<div class="hint" style="margin-top:4px">Website check: <b style="color:var(--ok)">${c.none + c.social} have no real site</b> (${c.none} none, ${c.social} social page only) · ${c.site} already had a site${c.audited ? ` (${c.poor} poor)` : ''}${c.unsure ? ` · ${c.unsure} could not be checked` : ''}</div>` : '') +
+    (c && c.contacts != null ? `<div class="hint" style="margin-top:4px">Contact info: <b style="color:var(--ok)">${c.emails} email${c.emails === 1 ? '' : 's'}</b> and ${c.phones} new phone number${c.phones === 1 ? '' : 's'} found across ${c.contacts} leads</div>` : '') +
     '<div id="findprog" class="hint" style="margin-top:6px"></div>' +
     (r.found === 0 ? `<div class="banner" style="margin:10px 0 0">Nothing matched. Try a bigger radius, the "Everything" category, or switch to "Has a website" to find outdated sites. Map coverage varies by town.</div>` : '');
 }
@@ -115,7 +139,7 @@ function renderLeadsTable() {
   const q = ui.query.toLowerCase();
   const base = S.leads.filter((l) => !q || `${l.name} ${l.category} ${l.address} ${l.email} ${l.website}`.toLowerCase().includes(q));
   $('#chips').innerHTML = FILTERS.map(([k, t]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="setFilter" data-f="${k}">${t}<small>${base.filter((l) => leadMatches(l, k)).length}</small></button>`).join('');
-  const rows = base.filter((l) => leadMatches(l, ui.filter)).sort((a, b) => (isHot(b) ? 1 : 0) - (isHot(a) ? 1 : 0));
+  const rows = base.filter((l) => leadMatches(l, ui.filter)).sort(SORTS[ui.sort || 'smart']);
   const empty = $('#empty');
   if (!rows.length) {
     empty.classList.remove('hide');
@@ -126,9 +150,9 @@ function renderLeadsTable() {
 }
 const rowHtml = (l) => `<tr class="lead ${sel().has(l.id) ? 'picked' : ''}" tabindex="0" aria-label="Open ${esc(l.name)}" data-act="openLead" data-id="${esc(l.id)}">
     <td class="ck"><input type="checkbox" class="sel" data-act="selRow" data-id="${esc(l.id)}" aria-label="Select ${esc(l.name)}" ${sel().has(l.id) ? 'checked' : ''}></td>
-    <td><div class="nm">${esc(l.name)}${isHot(l) ? ' <span class="pill acc">Hot</span>' : ''}</div><div class="sub">${esc([l.category, l.rating ? `${l.rating}★${l.reviews ? ' (' + l.reviews + ')' : ''}` : '', l.address || l.phone].filter(Boolean).join(' · '))}</div></td>
+    <td><div class="nm">${esc(l.name)}${isHot(l) ? ' <span class="pill acc">Hot</span>' : ''}</div><div class="sub">${esc([l.category, l.rating ? `${l.rating}★${l.reviews ? ' (' + l.reviews + ')' : ''}` : '', l.address, l.phone].filter(Boolean).join(' · '))}</div>${socialLinks(l)}</td>
     <td>${siteCell(l)}</td>
-    <td><input class="em" type="email" inputmode="email" autocapitalize="off" spellcheck="false" data-change="rowEmail" aria-label="Email for ${esc(l.name)}" data-id="${esc(l.id)}" placeholder="add email" value="${esc(l.email)}"></td>
+    <td><input class="em" type="email" inputmode="email" autocapitalize="off" spellcheck="false" data-change="rowEmail" aria-label="Email for ${esc(l.name)}" data-id="${esc(l.id)}" placeholder="add email" value="${esc(l.email)}">${emailAlts(l)}</td>
     <td>${statusPill(l)}</td>
     <td class="dl"><button class="btn s g rowdel" data-act="rowDel" data-id="${esc(l.id)}" aria-label="Delete ${esc(l.name)}" title="Delete">${ico('trash')}</button></td></tr>`;
 // Update one row in place so a save never wipes what you are typing in the next row
@@ -145,6 +169,23 @@ function chipsOnly() {
   const base = S.leads.filter((l) => !q || `${l.name} ${l.category} ${l.address} ${l.email} ${l.website}`.toLowerCase().includes(q));
   c.innerHTML = FILTERS.map(([k, t]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="setFilter" data-f="${k}">${t}<small>${base.filter((l) => leadMatches(l, k)).length}</small></button>`).join('');
 }
+A.rowUse = async (t) => { try { const r = await api('leads/' + t.dataset.id, { method: 'PATCH', body: { email: t.dataset.v } }); upd(r.lead, true); toast('Email switched', 1800); } catch (e) { toast(e.message, 4500); } };
+A.findOne = (t) => act(t, async () => {
+  const r = await api('enrich', { method: 'POST', body: { ids: [t.dataset.id], city: store.get('city', '') } });
+  r.leads.forEach((l) => upd(l, true));
+  const g = Object.values(r.got || {})[0] || {};
+  toast(g.email ? `Found ${g.email}` : g.phone ? `No email, but found ${g.phone}` : 'Nothing public found for this one', 3500);
+});
+C.sortBy = (i) => { ui.sort = i.value; renderLeadsTable(); };
+A.exportCsv = () => {
+  const ls = sel().size ? S.leads.filter((l) => sel().has(l.id)) : S.leads.filter((l) => leadMatches(l, ui.filter));
+  if (!ls.length) return toast('Nothing to export');
+  const q = (v) => { v = String(v ?? ''); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }; // quoted, and defused for spreadsheet formulas
+  const cols = [['Name', (l) => l.name], ['Category', (l) => l.category], ['Email', (l) => l.email], ['Phone', (l) => l.phone], ['Website', (l) => l.website], ['Website status', (l) => (l.website ? 'has site' : l.web ? l.web.status : 'unchecked')], ['Audit score', (l) => (l.audit ? l.audit.score : '')], ['Address', (l) => l.address], ['Facebook', (l) => (l.social || {}).facebook], ['Instagram', (l) => (l.social || {}).instagram], ['Yelp', (l) => (l.social || {}).yelp], ['Status', (l) => l.status], ['Notes', (l) => l.notes]];
+  const csv = [cols.map((c) => q(c[0])).join(','), ...ls.map((l) => cols.map((c) => q(c[1](l))).join(','))].join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv' })); a.download = 'flightline-leads.csv'; document.body.appendChild(a); a.click(); a.remove();
+  toast(`Exported ${ls.length} lead${ls.length === 1 ? '' : 's'}`, 2500);
+};
 A.setFilter = (t) => { ui.filter = t.dataset.f; renderLeadsTable(); };
 A.toggleFinder = (t) => { const b = $('#finderBody'); b.classList.toggle('hide'); ui.finderOpen = !b.classList.contains('hide'); t.textContent = ui.finderOpen ? 'Hide' : 'Show finder'; };
 C.rowEmail = async (i) => {
@@ -162,7 +203,7 @@ function upd(l, rowOnly) { setLead(l); chrome(); if (rowOnly) { patchRow(l); chi
 
 A.find = (btn) => act(btn, async () => {
   const body = { city: $('#fCity').value, category: $('#fCat').value, mode: ['has_site', 'any'].includes(store.get('mode', 'none')) ? store.get('mode') : 'none', radius: $('#fRad').value };
-  const auto = $('#fAuto') ? $('#fAuto').checked : true;
+  const auto = $('#fAuto') ? $('#fAuto').checked : true; CONTACTS.on = $('#fCon') ? $('#fCon').checked : true; store.set('con', CONTACTS.on ? '1' : '0');
   store.set('city', body.city); store.set('cat', body.category); store.set('mode', body.mode); store.set('rad', body.radius); store.set('auto', auto ? '1' : '0');
   try { ui.lastFind = await api('discover', { method: 'POST', body }); }
   catch (e) {
@@ -180,7 +221,7 @@ A.find = (btn) => act(btn, async () => {
   if (auto && ids.length) {
     const st = await checkAndAudit(ids, pipeSay);
     ui.lastFind.check = st; pipeSay(''); chrome(); renderFindRes(); renderLeadsTable();
-    toast(`${ids.length} new · ${st.none + st.social} have no real website · ${st.site} had one`, 6000);
+    toast(`${ids.length} new · ${st.none + st.social} have no real website · ${st.site} had one${st.emails != null ? ' · ' + st.emails + ' emails found' : ''}`, 6500);
   } else toast(`${ui.lastFind.added} new leads added`);
 });
 
@@ -191,6 +232,26 @@ async function bulk(btn, fn) {
   try { await fn(p); } catch (e) { toast(e.message, 5200); }
   finally { busyBulk = false; btn.disabled = false; p(''); chrome(); renderLeadsTable(); }
 }
+A.bulkContacts = (btn) => bulk(btn, async (p) => {
+  if (PIPE.on) return toast('A check is already running');
+  const picked = sel().size ? S.leads.filter((l) => sel().has(l.id)) : S.leads;
+  const ids = picked.filter((l) => !contacted(l) && !validEmail(l.email) && !['unsub', 'skip'].includes(l.status)).map((l) => l.id);
+  if (!ids.length) return toast(sel().size ? 'Everything selected already has an email' : 'Every lead already has an email');
+  PIPE.stop = false; PIPE.on = true;
+  let done = 0, em = 0, ph = 0;
+  try {
+    const ch = []; for (let i = 0; i < ids.length; i += 2) ch.push(ids.slice(i, i + 2));
+    await pool(ch, 2, async (c) => {
+      try {
+        const r = await api('enrich', { method: 'POST', body: { ids: c, city: store.get('city', '') } });
+        r.leads.forEach((l) => { setLead(l); const g = (r.got || {})[l.id] || {}; if (g.email) em++; if (g.phone) ph++; if ($('#tb')) patchRow(l); });
+      } catch {}
+      done += c.length; p(`Finding contacts ${Math.min(done, ids.length)}/${ids.length} · ${em} emails`);
+    });
+  } finally { PIPE.on = false; }
+  chrome(); renderLeadsTable();
+  toast(`Looked up ${ids.length} leads: found ${em} email${em === 1 ? '' : 's'} and ${ph} phone${ph === 1 ? '' : 's'}`, 6000);
+});
 A.bulkAudit = (btn) => bulk(btn, async (p) => {
   const ids = S.leads.filter((l) => l.website && !l.audit).map((l) => l.id);
   if (!ids.length) return toast('Nothing to audit');
@@ -268,12 +329,20 @@ function drawer() {
     <div class="card sec stack"><h4>Contact <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:500">· saves automatically</span></h4>
       <div><label for="dName">Business name</label><input id="dName" data-change="saveContact" value="${esc(l.name)}"></div>
       <div class="grid g2"><div><label for="dEmail">Email to approach</label><input id="dEmail" type="email" inputmode="email" autocapitalize="off" spellcheck="false" data-change="saveContact" value="${esc(l.email)}" placeholder="owner@business.com">
-        ${(() => { const alts = [...new Set([...(l.audit?.emails || []), ...(l.prevEmails || [])])].filter((e) => e && e !== l.email).slice(0, 5); return alts.length ? `<div class="alts" aria-label="Other emails found">${alts.map((e) => `<button class="chip" data-act="useEmail" data-v="${esc(e)}" title="Switch to this address">${esc(e)}</button>`).join('')}</div>` : ''; })()}</div>
+        ${(() => {
+          const seen = new Set([l.email]); const chips = [];
+          for (const e of l.contacts?.emails || []) if (!seen.has(e.email)) { seen.add(e.email); chips.push([e.email, SRC[e.source] || e.source]); }
+          for (const e of [...(l.audit?.emails || []), ...(l.prevEmails || [])]) if (e && !seen.has(e)) { seen.add(e); chips.push([e, '']); }
+          return chips.length ? `<div class="alts" aria-label="Other emails found">${chips.slice(0, 6).map(([e, s]) => `<button class="chip" data-act="useEmail" data-v="${esc(e)}" title="${s ? 'From ' + esc(s) + '. ' : ''}Switch to this address">${esc(e)}${s ? ` <small>${esc(s)}</small>` : ''}</button>`).join('')}</div>` : '';
+        })()}</div>
       <div><label for="dSite">Website</label><input id="dSite" data-change="saveContact" value="${esc(l.website)}" placeholder="none"></div></div>
-      <div class="grid g2"><div><label for="dPhone">Phone</label><input id="dPhone" type="tel" data-change="saveContact" value="${esc(l.phone)}"></div>
+      <div class="grid g2"><div><label for="dPhone">Phone</label><input id="dPhone" type="tel" data-change="saveContact" value="${esc(l.phone)}">
+        ${(() => { const p = (l.contacts?.phones || []).filter((x) => x.phone !== l.phone).slice(0, 3); return p.length ? `<div class="alts">${p.map((x) => `<button class="chip" data-act="usePhone" data-v="${esc(x.phone)}" title="From ${esc(SRC[x.source] || x.source)}">${esc(x.phone)}</button>`).join('')}</div>` : ''; })()}</div>
       <div><label for="dAddr">Address</label><input id="dAddr" data-change="saveContact" value="${esc(l.address)}"></div></div>
       <div><label for="dNotes">Notes</label><input id="dNotes" data-change="saveContact" value="${esc(l.notes)}" placeholder="Anything to remember"></div>
-      <div class="acts"><button class="btn s" data-act="dSave">Save contact</button>${l.website ? '<button class="btn s" data-act="dAudit">Audit site</button>' : ''}${contacted(l) ? '<button class="btn s" data-act="dToReplies">Quick reply / follow-up</button>' : ''}</div>
+      ${Object.keys(l.social || {}).length ? `<div class="soc">${socialLinks(l).replace(/<\/?div[^>]*>/g, '')}</div>` : ''}
+      ${l.contacts ? `<div class="hint">Looked at ${l.contacts.reached?.length ? esc(l.contacts.reached.join(', ')) : 'nothing reachable'} ${ago(l.contacts.checkedAt)}${l.contacts.notes?.length ? '. ' + esc(l.contacts.notes.join('. ')) : ''}.</div>` : ''}
+      <div class="acts"><button class="btn s" data-act="dSave">Save contact</button><button class="btn s" data-act="dFind">${ico('search')} ${l.contacts ? 'Look again' : 'Find contact info'}</button>${l.website ? '<button class="btn s" data-act="dAudit">Audit site</button>' : ''}${contacted(l) ? '<button class="btn s" data-act="dToReplies">Quick reply / follow-up</button>' : ''}</div>
     </div>
 
     ${l.audit ? `<div class="card sec"><h4>Site audit · ${l.audit.unverified ? 'could not be judged' : l.audit.score + '/100 (higher = weaker site)'}</h4>${l.audit.issues.length ? '<ul class="iss">' + l.audit.issues.map((i) => `<li>${esc(i)}</li>`).join('') + '</ul>' : '<span class="sub">No obvious problems found.</span>'}${l.audit.good?.length ? '<div class="chips" style="margin-top:8px">' + l.audit.good.map((g) => `<span class="pill ok">${esc(g)}</span>`).join('') + '</div>' : ''}</div>` : ''}
@@ -306,6 +375,14 @@ C.saveDraft = async () => {
   try { const r = await api('leads/' + l.id, { method: 'PATCH', body: { draft: draftNow() } }); setLead(r.lead); } catch (e) { toast(e.message); }
 };
 C.dStat = async (s) => { const l = curLead(); const r = await api('leads/' + l.id, { method: 'PATCH', body: { status: s.value } }); upd(r.lead); };
+A.usePhone = (t) => { $('#dPhone').value = t.dataset.v; C.saveContact(); };
+A.dFind = (btn) => act(btn, async () => {
+  const l = curLead(); if (!l) return;
+  const r = await api('enrich', { method: 'POST', body: { ids: [l.id], city: store.get('city', '') } });
+  r.leads.forEach((x) => upd(x));
+  const g = Object.values(r.got || {})[0] || {};
+  toast(g.email ? `Found ${g.email}` : (r.leads[0]?.contacts?.emails?.length ? 'Found other addresses. Pick one below.' : 'Nothing public found'), 3500);
+});
 A.useAlt = (t) => { $('#dSub').value = t.dataset.v; C.saveDraft(); };
 const contactBody = () => {
   const l = curLead(), b = {}, f = { name: '#dName', email: '#dEmail', website: '#dSite', phone: '#dPhone', address: '#dAddr', notes: '#dNotes' };
@@ -448,6 +525,7 @@ A.dDel = async () => {
 
 /* ---------- website check pipeline ---------- */
 const PIPE = { stop: false, on: false };
+const CONTACTS = { on: true };
 A.stopPipe = () => { PIPE.stop = true; };
 async function pool(items, n, fn) {
   let i = 0;
@@ -474,6 +552,18 @@ async function checkAndAudit(ids, say) {
       try { const r = await api('audit', { method: 'POST', body: { ids: ch } }); r.leads.forEach((l) => { setLead(l); st.audited++; if (l.audit.score >= 40 && !l.audit.unverified) st.poor++; if ($('#tb')) patchRow(l); }); } catch {}
       line('Auditing sites');
     });
+    if (CONTACTS.on) {
+      const want = ids.filter((id) => { const l = S.leads.find((x) => x.id === id); return l && !l.contacts && !contacted(l); });
+      st.contacts = 0; st.emails = 0; st.phones = 0;
+      const ech = []; for (let i = 0; i < want.length; i += 2) ech.push(want.slice(i, i + 2));
+      await pool(ech, 2, async (ch) => {
+        try {
+          const r = await api('enrich', { method: 'POST', body: { ids: ch, city: store.get('city', '') } });
+          r.leads.forEach((l) => { setLead(l); st.contacts++; const g = (r.got || {})[l.id] || {}; if (g.email) st.emails++; if (g.phone) st.phones++; if ($('#tb')) patchRow(l); });
+        } catch { st.contacts += ch.length; }
+        say(`Finding contact info · ${st.contacts}/${want.length} · <b>${st.emails}</b> emails so far <button class="btn s" data-act="stopPipe">Stop</button>`);
+      });
+    }
   } finally { PIPE.on = false; }
   return st;
 }

@@ -2,6 +2,7 @@ import { cleanEmail, json, loadDB, saveDB, isEmail, today, cap, MAX_LEADS, DEFAU
 import { findBusinesses } from '../../lib/osm.js';
 import { auditSite } from '../../lib/audit.js';
 import { verifySite } from '../../lib/verify.js';
+import { enrichContacts, rank } from '../../lib/enrich.js';
 import { draftEmail, draftReply, runAgent, testAI } from '../../lib/ai.js';
 import { sendEmail, emailReady, renderEmail } from '../../lib/email.js';
 
@@ -19,6 +20,8 @@ const newLead = (o) => ({
   email: isEmail(cleanEmail(o.email)) ? cleanEmail(o.email) : '',
   website: cap(o.website, 300).trim(),
   notes: cap(o.notes, 2000),
+  social: {},
+  contacts: null,
   source: ['osm', 'google'].includes(o.source) ? o.source : 'manual',
   status: 'new',
   audit: null,
@@ -55,6 +58,7 @@ export async function onRequest({ request, env, params }) {
     if (a === 'discover' && m === 'POST') return await discover(env, body);
     if (a === 'discover-import' && m === 'POST') return await discoverImport(env, body);
     if (a === 'verify' && m === 'POST') return await verify(env, body);
+    if (a === 'enrich' && m === 'POST') return await enrich(env, body);
     if (a === 'leads-bulk' && m === 'POST') return await bulkLeads(env, body);
     if (a === 'leads-undo' && m === 'POST') return await undoDelete(env);
     if (a === 'leads' && !b && m === 'POST') return await addLead(env, body);
@@ -314,6 +318,47 @@ async function verify(env, p) {
   return json({ leads });
 }
 
+// Fills in what's missing (email, phone, website, social pages) from public sources. Never overwrites something you already have;
+// every candidate found is kept on the lead so you can switch to another with one click.
+function applyContacts(db, lead, found, r) {
+  const rk = rank(found, lead.phone);
+  lead.contacts = {
+    emails: rk.emails.map((e) => ({ email: e.email, source: e.source, via: cap(e.via, 200) })),
+    phones: rk.phones.map((p) => ({ phone: p.phone, source: p.source })),
+    reached: found.reached,
+    notes: found.notes.slice(0, 3),
+    checkedAt: Date.now(),
+  };
+  lead.social = { ...(found.social || {}), ...(lead.social || {}) };
+  for (const k of Object.keys(lead.social)) lead.social[k] = cap(lead.social[k], 200);
+  const got = { email: '', phone: '', website: '' };
+  const best = rk.emails.find((e) => e.score >= 2 && !db.suppress.includes(e.email));
+  if (!lead.email && best) { lead.email = best.email; lead.emailSource = best.source; got.email = best.email; }
+  if (!lead.phone && rk.phones[0]) { lead.phone = rk.phones[0].phone; got.phone = lead.phone; }
+  if (!lead.address && found.address) lead.address = cap(found.address, 200);
+  if (!lead.website && found.website) { lead.website = cap(found.website, 300); lead.audit = null; got.website = lead.website; }
+  return got;
+}
+
+async function enrich(env, p) {
+  const ids = (Array.isArray(p.ids) ? p.ids : []).slice(0, 2).map(String);
+  const city = cap(p.city, 120);
+  const snap = await loadDB(env);
+  const todo = ids.map((id) => snap.leads[id]).filter(Boolean);
+  const outs = await Promise.all(todo.map((l) => enrichContacts(env, { name: l.name, phone: l.phone, address: l.address, website: l.website }, city).catch(() => null)));
+  const db = await loadDB(env); // fresh copy so parallel calls never overwrite each other
+  const leads = [];
+  const got = {};
+  todo.forEach((t, i) => {
+    const lead = db.leads[t.id];
+    if (!lead || !outs[i]) return;
+    got[t.id] = applyContacts(db, lead, outs[i]);
+    leads.push(lead);
+  });
+  await saveDB(env, db);
+  return json({ leads, got });
+}
+
 async function audit(env, p) {
   const ids = (Array.isArray(p.ids) ? p.ids : []).slice(0, 5).map(String);
   const snap = await loadDB(env);
@@ -565,6 +610,14 @@ function buildTools(env, db, pending) {
           if (r.status === 'site' && r.source !== 'listed' && !l.website) { l.website = cap(r.site, 300); l.audit = null; }
           return { id: l.id, name: l.name, status: r.status, site: l.website || '', evidence: r.evidence };
         }) };
+      },
+    },
+    find_contacts: {
+      spec: { name: 'find_contacts', description: 'Look up email, phone, website and social pages for up to 2 leads from their website, web search, Facebook and Yelp. Fills only what is missing.', parameters: { type: 'object', properties: { ids: { type: 'array', items: { type: 'string' } }, city: { type: 'string' } }, required: ['ids'] } },
+      run: async (a) => {
+        const ls = (a.ids || []).slice(0, 2).map((id) => db.leads[String(id)]).filter(Boolean);
+        const rs = await Promise.all(ls.map((l) => enrichContacts(env, { name: l.name, phone: l.phone, address: l.address, website: l.website }, String(a.city || '')).catch(() => null)));
+        return { found: ls.map((l, i) => { if (!rs[i]) return { id: l.id, name: l.name, error: 'lookup failed' }; const g = applyContacts(db, l, rs[i]); return { id: l.id, name: l.name, ...g, candidates: l.contacts.emails.map((e) => e.email), notes: l.contacts.notes }; }) };
       },
     },
     draft_email: {

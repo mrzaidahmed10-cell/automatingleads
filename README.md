@@ -12,6 +12,8 @@ Personal lead-finder and outreach dashboard for Cloudflare Pages.
 - **Plain-text emails:** sent exactly as you write them. No footer, no unsubscribe link or headers, no tracking, no HTML. Bulk sends go out 15-40 seconds apart. Leads marked "Do not contact" are never emailed.
 
 ## Look and feel
+Glass has a bit of character: press and drag a button, tab or chip and it stretches toward your finger, thins out the faster you pull, and bounces back when you let go, with colour fringes on the edges. Panels catch a light that follows your pointer, and glass orbs drift behind the page. It all switches off if your device is set to reduce motion (`public/jelly.js`).
+
 The controls (top bar tools, mobile tab bar, search, segmented switches) are real [Glisse](https://github.com/0kzh/glisse) components by Kelvin Zhang (MIT), bundled into `public/glass.js`. Cards, sidebar and dialogs use the same glass material. Chromium browsers get true refraction, others get frosted glass. If `glass.js` ever fails to load, the dashboard falls back to plain controls.
 Rebuild only if you edit `glass-src/entry.jsx`: `cd glass-src && npm install && npm run build`. Cloudflare does not need to build anything.
 
@@ -25,6 +27,8 @@ Searches OpenStreetMap (and Google Places if you add a key). The server asks eve
 Use **Verify websites** on the Leads page to re-check any leads, and the **Unchecked** and **Hot** filters to sort them. Searches are checked in small batches because Cloudflare's free plan limits outbound requests per call.
 
 Optional secrets that improve results: `GOOGLE_PLACES_KEY` (many more businesses, with ratings and review counts; Google may require billing) and `BRAVE_API_KEY` (more reliable web search than the default, which can get blocked on shared server IPs).
+
+**Contact info.** After the website check, FlightLine also looks up each lead's email, phone and social pages from public sources: the business's own site (contact and about pages, structured data, protected and obfuscated addresses), web search results, and its public Facebook and Yelp pages. It never overwrites something you typed. Every address it finds is kept as a one-click choice on the lead (in the row and in the lead panel), labelled with where it came from. Facebook and Yelp often refuse to show their pages to servers, so those are best effort and the lead says which sources it actually reached. Use **Find contacts** to run it on your selection (or every lead still missing an email), **Export CSV** to download leads as a spreadsheet, and the **Sort** menu to reorder the list.
 
 **Deleting leads.** Tick rows (shift-click selects a range, the header box selects all), or use **Select…** for presets such as "no website" or "poor sites". Press Delete or use the bar to remove them. The dialog has a "don't bring these back when I search again" option, and **Undo** restores them for about an hour. The trash icon on a row deletes just that one.
 
