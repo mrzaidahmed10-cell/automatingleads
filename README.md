@@ -78,3 +78,11 @@ With no keys at all it still works: OpenStreetMap for businesses, then DuckDuckG
 - Start with a low daily limit (10-20) and set up SPF/DKIM/DMARC if you use your own domain.
 - Lead data comes from OpenStreetMap, so coverage varies by town. Geocoding tries Open-Meteo then Nominatim, and the map query tries three servers.
 - Sending uses the `gmail.send` scope only, so the app cannot read your inbox. Paste replies into the Quick replies page to have the AI answer them.
+
+
+## Lead count, distance and AI help
+
+- **How many leads** (steps of 5, or type any number 1-100) and **Distance in miles** are in the finder. Smaller counts use fewer search/API calls, which saves your free quotas.
+- **Groq as a second opinion.** When normal checks can't decide whether a business has a website, Groq picks from the real search results (it can't invent a URL, and the page must still load and mention the business). Set `AI_LEADS=off` in Cloudflare to turn this off.
+- **Sidebar** is grouped (Outreach, Conversations, Insights, Library, Settings); phones show only Overview, Leads, Inbox and Settings.
+- **Do not contact** page lets you add or remove blocked addresses.

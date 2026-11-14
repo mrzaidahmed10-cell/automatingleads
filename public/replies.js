@@ -116,5 +116,5 @@ A.tplDel = (t) => { tplSync(); ui.tpl.splice(+t.dataset.i, 1); tplModal(); };
 A.tplSave = (btn) => act(btn, async () => {
   tplSync();
   const r = await api('templates', { method: 'PUT', body: { templates: ui.tpl } });
-  S.templates = r.templates; closeOv(); renderComposer(); toast('Templates saved');
+  S.templates = r.templates; closeOv(); if (page() === 'templates') vTemplates(); else renderComposer(); toast('Templates saved');
 });

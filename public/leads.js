@@ -58,6 +58,12 @@ const statusPill = (l) => {
   return `<span class="pill ${m[1]}">${m[0]}</span>`;
 };
 
+// number box with - / + buttons that move in steps of 5, plus typing any number you like
+const stepper = (id, val, min, max, unit) => `<div class="step"><button type="button" class="btn s g" data-act="stepDn" data-t="${id}" aria-label="Fewer ${unit}">−</button><input id="${id}" type="number" inputmode="numeric" min="${min}" max="${max}" step="1" value="${esc(val)}" data-min="${min}" data-max="${max}" aria-label="${unit}"><button type="button" class="btn s g" data-act="stepUp" data-t="${id}" aria-label="More ${unit}">+</button></div>`;
+const numVal = (id, def, min, max) => { const e = document.getElementById(id); const v = Math.round(Number(e && e.value)); return Math.min(Math.max(Number.isFinite(v) && v > 0 ? v : def, min), max); };
+const stepBy = (id, dir) => { const e = document.getElementById(id); if (!e) return; const min = +e.dataset.min, max = +e.dataset.max; const v = numVal(id, min, min, max); e.value = Math.min(max, Math.max(min, dir > 0 ? Math.floor(v / 5) * 5 + 5 : Math.ceil(v / 5) * 5 - 5)); };
+A.stepUp = (t) => stepBy(t.dataset.t, 1);
+A.stepDn = (t) => stepBy(t.dataset.t, -1);
 function vLeads() {
   const open = ui.finderOpen ?? S.leads.length === 0;
   const opt = (v, t, sel) => `<option value="${v}" ${sel ? 'selected' : ''}>${t}</option>`;
@@ -74,7 +80,8 @@ function vLeads() {
           <div style="flex:2"><label>City</label><input id="fCity" value="${esc(store.get('city', 'Iowa City, Iowa'))}" placeholder="City, State"></div>
           <div><label>Category</label><select id="fCat">${[['all', 'Everything'], ['restaurants', 'Food & drink'], ['beauty', 'Salons & beauty'], ['auto', 'Auto'], ['fitness', 'Fitness'], ['trades', 'Trades & crafts'], ['health', 'Health & vet'], ['retail', 'Retail'], ['offices', 'Offices']].map(([v, t]) => opt(v, t, store.get('cat', 'all') === v)).join('')}</select></div>
           <div class="fmode"><label id="fModeL">Looking for</label><div id="fModeMount" class="seg"></div></div>
-          <div style="max-width:120px;min-width:100px"><label>Radius</label><select id="fRad">${[5, 15, 30, 50].map((v) => opt(v, v + ' km', String(store.get('rad', 15)) === String(v))).join('')}</select></div>
+          <div class="stp"><label for="fLim">How many leads</label>${stepper('fLim', store.get('lim', '20'), 1, 100, 'leads')}</div>
+          <div class="stp"><label for="fRad">Distance (miles)</label>${stepper('fRad', store.get('radmi', '10'), 1, 30, 'miles')}</div>
           <div style="flex:0 0 auto;min-width:0"><button class="btn p" data-act="find">${ico('mapPin')} Find leads</button></div>
         </div>
         <label class="chk" style="margin-top:10px"><input type="checkbox" id="fAuto" ${store.get('auto', '1') === '1' ? 'checked' : ''}> Check every result for a real website, then audit the ones that have one <span class="hint">(OpenStreetMap often misses websites, so this is what separates real leads from false ones)</span></label>
@@ -131,6 +138,7 @@ function renderFindRes() {
     (c ? `<div class="hint" style="margin-top:4px">Website check: <b style="color:var(--ok)">${c.none + c.social} have no real site</b> (${c.none} none, ${c.social} social page only) · ${c.site} already had a site${c.audited ? ` (${c.poor} poor)` : ''}${c.unsure ? ` · ${c.unsure} could not be checked` : ''}</div>` : '') +
     (c && c.contacts != null ? `<div class="hint" style="margin-top:4px">Contact info: <b style="color:var(--ok)">${c.emails} email${c.emails === 1 ? '' : 's'}</b> and ${c.phones} new phone number${c.phones === 1 ? '' : 's'} found across ${c.contacts} leads</div>` : '') +
     '<div id="findprog" class="hint" style="margin-top:6px"></div>' +
+    (r.asked && r.found > 0 && r.added < r.asked ? `<div class="hint" style="margin-top:4px">You asked for ${r.asked}; ${r.added} new ${r.added === 1 ? 'lead was' : 'leads were'} available here. Try a larger distance or another category for more.</div>` : '') +
     (r.found === 0 ? `<div class="banner" style="margin:10px 0 0">Nothing matched. Try a bigger radius, the "Everything" category, or switch to "Has a website" to find outdated sites. Map coverage varies by town.</div>` : '');
 }
 
@@ -202,9 +210,9 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.
 function upd(l, rowOnly) { setLead(l); chrome(); if (rowOnly) { patchRow(l); chipsOnly(); } else renderLeadsTable(); if (ui.cur === l.id) drawer(); }
 
 A.find = (btn) => act(btn, async () => {
-  const body = { city: $('#fCity').value, category: $('#fCat').value, mode: ['has_site', 'any'].includes(store.get('mode', 'none')) ? store.get('mode') : 'none', radius: $('#fRad').value };
+  const body = { city: $('#fCity').value, category: $('#fCat').value, mode: ['has_site', 'any'].includes(store.get('mode', 'none')) ? store.get('mode') : 'none', radius: Math.round(numVal('fRad', 10, 1, 30) * 1.609344 * 10) / 10, limit: numVal('fLim', 20, 1, 100) };
   const auto = $('#fAuto') ? $('#fAuto').checked : true; CONTACTS.on = $('#fCon') ? $('#fCon').checked : true; store.set('con', CONTACTS.on ? '1' : '0');
-  store.set('city', body.city); store.set('cat', body.category); store.set('mode', body.mode); store.set('rad', body.radius); store.set('auto', auto ? '1' : '0');
+  store.set('city', body.city); store.set('cat', body.category); store.set('mode', body.mode); store.set('radmi', String(numVal('fRad', 10, 1, 30))); store.set('lim', String(body.limit)); store.set('auto', auto ? '1' : '0');
   try { ui.lastFind = await api('discover', { method: 'POST', body }); }
   catch (e) {
     if (!(e.data && e.data.clientFallback)) { ui.lastFind = { error: e.message }; renderFindRes(); throw e; }
@@ -212,7 +220,7 @@ A.find = (btn) => act(btn, async () => {
     const el = $('#findres'); if (el) el.innerHTML = '<div class="hint" style="margin-top:14px">Server could not reach the map. Searching from your browser…</div>';
     try {
       const f = await FINDER.run(body);
-      const r = await api('discover-import', { method: 'POST', body: { items: f.items, place: f.place } });
+      const r = await api('discover-import', { method: 'POST', body: { items: f.items, place: f.place, limit: body.limit } });
       ui.lastFind = { ...r, debug: { ...r.debug, place: f.place, raw: f.raw, chains: f.chains, server: 'your browser' } };
     } catch (e2) { ui.lastFind = { error: 'Search failed. Server: ' + e.message + '. Browser: ' + e2.message }; renderFindRes(); throw e2; }
   }

@@ -73,6 +73,8 @@ export async function onRequest({ request, env, params }) {
       if (c.key && !env[c.key]) return json({ ok: false, ms: 0, detail: `Add ${c.key} in Cloudflare first` });
       return json(await testSource(env, c.id));
     }
+    if (a === 'suppress' && m === 'GET') return json({ list: (await loadDB(env)).suppress });
+    if (a === 'suppress' && m === 'POST') return await editSuppress(env, body);
     if (a === 'leads-bulk' && m === 'POST') return await bulkLeads(env, body);
     if (a === 'leads-undo' && m === 'POST') return await undoDelete(env);
     if (a === 'leads' && !b && m === 'POST') return await addLead(env, body);
@@ -101,13 +103,18 @@ export async function onRequest({ request, env, params }) {
 }
 
 /* ---------------- shared helpers ---------------- */
-function mergeFound(db, items) {
+// Likeliest to be reachable and worth a pitch first, so a small count still gets the best ones.
+const quality = (i) => (i.phone ? 2 : 0) + (i.reviews > 0 ? 1 : 0) + (i.rating >= 4 ? 0.5 : 0) + (i.email ? 2 : 0) + (i.source === 'serper' || i.source === 'google' ? 1 : 0);
+const clampLimit = (v) => Math.min(Math.max(Math.round(Number(v)) || 20, 1), 100);
+
+function mergeFound(db, items, limit = Infinity) {
   let added = 0,
     dupes = 0,
     hidden = 0;
   const ids = [];
   const gone = new Set(db.dismissed || []);
-  for (const f of items) {
+  for (const f of [...items].sort((a, b) => quality(b) - quality(a))) {
+    if (added >= limit) break;
     if (db.leads[f.id]) {
       dupes++;
       continue;
@@ -169,6 +176,7 @@ async function discover(env, p) {
       category: p.category || 'all',
       mode: ['has_site', 'any'].includes(p.mode) ? p.mode : 'none',
       radiusKm: Number(p.radius) || 15,
+      limit: clampLimit(p.limit),
     }, env);
   } catch (e) {
     // Tell the page to retry straight from the browser, which map servers treat far better than a datacenter.
@@ -176,9 +184,9 @@ async function discover(env, p) {
   }
   const { items, debug } = found;
   const db = await loadDB(env);
-  const { added, dupes, hidden, ids } = mergeFound(db, items);
+  const { added, dupes, hidden, ids } = mergeFound(db, items, clampLimit(p.limit));
   await saveDB(env, db);
-  return json({ found: items.length, added, dupes, hidden, ids: ids.slice(0, 400), debug });
+  return json({ found: items.length, added, dupes, hidden, ids: ids.slice(0, 400), asked: clampLimit(p.limit), debug });
 }
 
 // Leads found by the browser itself when the server could not reach the map servers.
@@ -193,9 +201,9 @@ async function discoverImport(env, p) {
     items.push({ id, name, category: cap(x.category, 60), address: cap(x.address, 200), phone: cap(x.phone, 40), email: isEmail(email) ? email : '', website: cap(x.website, 300), source: 'osm' });
   }
   const db = await loadDB(env);
-  const { added, dupes, hidden, ids } = mergeFound(db, items);
+  const { added, dupes, hidden, ids } = mergeFound(db, items, clampLimit(p.limit));
   await saveDB(env, db);
-  return json({ found: items.length, added, dupes, hidden, ids: ids.slice(0, 400), debug: { place: cap(p.place, 160), raw: items.length, server: 'your browser' } });
+  return json({ found: items.length, added, dupes, hidden, ids: ids.slice(0, 400), asked: clampLimit(p.limit), debug: { place: cap(p.place, 160), raw: items.length, server: 'your browser' } });
 }
 
 async function addLead(env, p) {
@@ -282,6 +290,22 @@ async function bulkLeads(env, p) {
 }
 
 // Undo for the most recent delete. The removed leads wait in their own KV key for an hour.
+// Do-not-contact list: add or remove addresses. Removing one releases leads that were parked because of it.
+async function editSuppress(env, p) {
+  const db = await loadDB(env);
+  const e = String(p.email || '').trim().toLowerCase().replace(/^mailto:/, '');
+  if (!isEmail(e)) throw new Error("That doesn't look like an email address.");
+  if (p.remove) {
+    db.suppress = db.suppress.filter((x) => x !== e);
+    for (const l of Object.values(db.leads)) if (l.status === 'unsub' && String(l.email || '').toLowerCase() === e) l.status = l.draft ? 'drafted' : 'new';
+  } else {
+    if (!db.suppress.includes(e)) db.suppress.push(e);
+    for (const l of Object.values(db.leads)) if (String(l.email || '').toLowerCase() === e && l.status !== 'sent' && l.status !== 'replied') l.status = 'unsub';
+  }
+  await saveDB(env, db);
+  return json({ list: db.suppress });
+}
+
 async function undoDelete(env) {
   const raw = await env.LEADS.get('trash');
   if (!raw) throw new Error('Nothing to undo. Undo only lasts an hour.');

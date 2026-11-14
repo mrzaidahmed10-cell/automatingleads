@@ -134,14 +134,56 @@ const ROUTES = {
   dashboard: ['Overview', () => vDash(), 'home'],
   leads: ['Leads', () => vLeads(), 'users'],
   replies: ['Inbox', () => vReplies(), 'mail'],
+  templates: ['Templates', () => vTemplates(), 'edit'],
+  dnc: ['Do not contact', () => vDnc(), 'shield'],
   settings: ['Settings', () => vSettings(), 'gear'],
 };
 const ALIAS = { analytics: 'dashboard', assistant: 'dashboard' }; // old links still land somewhere sensible
-const rawKey = () => (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
+// Desktop sidebar: grouped and complete. `m` marks the essentials that also show in the phone tab bar.
+const NAV = [
+  ['Overview', [['Overview', 'home', 'dashboard', '', 1]]],
+  ['Outreach', [
+    ['Find leads', 'search', 'leads', 'find=1'],
+    ['All leads', 'users', 'leads', '', 1],
+    ['Hot leads', 'spark', 'leads', 'f=hot'],
+    ['Needs email', 'mail', 'leads', 'f=noemail'],
+    ['Drafted', 'edit', 'leads', 'f=drafted'],
+    ['Sent', 'send', 'leads', 'f=sent'],
+  ]],
+  ['Conversations', [
+    ['Inbox', 'reply', 'replies', '', 1],
+    ['Follow-ups due', 'mail', 'replies', 'f=due'],
+  ]],
+  ['Insights', [
+    ['Analytics', 'chart', 'dashboard', 'ins=1'],
+    ['Assistant', 'spark', 'assistant', ''],
+  ]],
+  ['Library', [
+    ['Templates', 'edit', 'templates', ''],
+    ['Do not contact', 'shield', 'dnc', ''],
+  ]],
+  ['Settings', [
+    ['Profile & voice', 'gear', 'settings', 't=profile', 1],
+    ['Data sources', 'rows', 'settings', 't=sources'],
+    ['Account', 'users', 'settings', 't=account'],
+  ]],
+];
+const hashParts = () => { const h = location.hash.replace(/^#\/?/, '') || 'dashboard'; const [k, q] = h.split('?'); return [k, new URLSearchParams(q || '')]; };
+const rawKey = () => hashParts()[0];
 const page = () => { const r = rawKey(), k = ALIAS[r] || r; return ROUTES[k] ? k : 'dashboard'; };
+// Sidebar links can carry a preset (a filter, a settings tab). Apply it before the page draws.
+function applyParams() {
+  const [k, q] = hashParts();
+  const f = q.get('f');
+  if (k === 'leads') { if (f) { ui.filter = f; ui.query = ''; } if (q.get('find')) ui.finderOpen = true; else if (f) ui.finderOpen = false; }
+  if (k === 'replies' && f) ui.replyFilter = f;
+  if (k === 'settings' && q.get('t')) ui.setTab = q.get('t');
+  if (k === 'analytics' || q.get('ins')) store.set('ins', '1');
+}
 function route() {
   if (rawKey() === 'assistant') { history.replaceState(null, '', '#/dashboard'); setTimeout(() => openAssist(true), 0); }
   if (window.FLGlass) window.FLGlass.unmountWithin($('#view'));
+  applyParams();
   const k = page();
   $('#title').textContent = ROUTES[k][0]; document.title = ROUTES[k][0] + ' · FlightLine';
   $('#view').innerHTML = '';
@@ -152,14 +194,20 @@ function route() {
 route.n = 0;
 window.addEventListener('hashchange', route);
 function go(to, extra) { if (extra) Object.assign(ui, extra); if (location.hash === '#/' + to) route(); else location.hash = '#/' + to; }
+const navHref = (pg, q) => '#/' + pg + (q ? '?' + q : '');
 function chrome() {
-  const k = page(), L = S.leads;
-  const badge = { replies: L.filter((l) => l.status === 'replied').length };
-  const items = Object.entries(ROUTES).map(([key, [label, , ic]]) =>
-    `<a href="#/${key}" class="${k === key ? 'on' : ''}" ${k === key ? 'aria-current="page"' : ''}>${ico(ic)}<span class="t">${label.replace('Quick replies', 'Replies')}</span>${badge[key] ? `<span class="badge">${badge[key]}</span>` : ''}</a>`).join('');
-  $('#nav').innerHTML = items;
-  if (G()) G().mount($('#tabbar'), 'Tabs', { value: k, items: Object.entries(ROUTES).map(([key, [label, , ic]]) => ({ value: key, href: '#/' + key, label: label.replace('Quick replies', 'Replies'), icon: ico(ic), badge: badge[key] || 0 })) });
-  else $('#tabbar').innerHTML = Object.entries(ROUTES).map(([key, [label, , ic]]) => `<a href="#/${key}" class="${k === key ? 'on' : ''}" ${k === key ? 'aria-current="page"' : ''}>${ico(ic)}${label.replace('Quick replies', 'Replies')}${badge[key] ? `<span class="badge">${badge[key]}</span>` : ''}</a>`).join('');
+  const k = page(), L = S.leads, [rk, rq] = hashParts();
+  const cnt = { replied: L.filter((l) => l.status === 'replied').length, hot: 0, noemail: 0, drafted: 0, sent: 0, due: 0, dnc: S.suppressed || 0 };
+  if (window.leadMatches) for (const f of ['hot', 'noemail', 'drafted', 'sent']) cnt[f] = L.filter((l) => leadMatches(l, f)).length;
+  if (typeof dueFollowup === 'function') cnt.due = L.filter(dueFollowup).length;
+  const badge = (pg, q) => (pg === 'replies' && !q ? cnt.replied : pg === 'replies' ? cnt.due : pg === 'dnc' ? cnt.dnc : pg === 'leads' && /^f=/.test(q) ? cnt[q.slice(2)] : pg === 'leads' && !q ? L.length : 0) || 0;
+  const on = (pg, q) => { const same = (ALIAS[rk] || rk) === pg || rk === pg; if (!same) return false; const want = new URLSearchParams(q); const key = [...want.keys()][0]; return key ? rq.get(key) === want.get(key) : ![...rq.keys()].some((x) => ['f', 'find', 't', 'ins'].includes(x)); };
+  $('#nav').innerHTML = NAV.map(([grp, items]) => `<div class="ng" role="group" aria-label="${grp}"><div class="nh">${grp}</div>${items.map(([label, ic, pg, q]) => { const b = badge(pg, q); const a = on(pg, q); return `<a href="${navHref(pg, q)}" class="${a ? 'on' : ''}" ${a ? 'aria-current="page"' : ''} title="${label}">${ico(ic)}<span class="t">${label}</span>${b ? `<span class="badge${pg === 'replies' && !q ? '' : ' soft'}">${b}</span>` : ''}</a>`; }).join('')}</div>`).join('');
+  const tabs = [['Overview', 'home', 'dashboard', ''], ['Leads', 'users', 'leads', ''], ['Inbox', 'reply', 'replies', ''], ['Settings', 'gear', 'settings', '']];
+  const tk = ALIAS[rk] || rk;
+  const tabOn = (pg) => (pg === tk) || (pg === 'leads' && false);
+  if (G()) G().mount($('#tabbar'), 'Tabs', { value: tabs.some((t) => tabOn(t[2])) ? tk : '', items: tabs.map(([label, ic, pg]) => ({ value: pg, href: '#/' + pg, label, icon: ico(ic), badge: pg === 'replies' ? cnt.replied : 0 })) });
+  else $('#tabbar').innerHTML = tabs.map(([label, ic, pg]) => `<a href="#/${pg}" class="${tabOn(pg) ? 'on' : ''}" ${tabOn(pg) ? 'aria-current="page"' : ''}>${ico(ic)}${label}${pg === 'replies' && cnt.replied ? `<span class="badge">${cnt.replied}</span>` : ''}</a>`).join('');
   const lim = Number(S.settings.dailyLimit) || 0;
   $('#qTxt').textContent = lim ? `${S.sentToday} / ${lim} sent today` : `${S.sentToday} sent today`;
   $('#qBar').style.width = lim ? Math.min(100, (S.sentToday / lim) * 100) + '%' : '0%';
@@ -171,7 +219,7 @@ function refreshUI() {
   chrome();
   const k = page();
   if (k === 'dashboard') vDash();
-  else if (k === 'leads') renderLeadsTable(); else if (k === 'replies') renderReplyList();
+  else if (k === 'leads') renderLeadsTable(); else if (k === 'replies') renderReplyList(); else if (k === 'dnc') vDnc();
 }
 async function boot() {
   try { S = await api('state'); } catch (e) {
@@ -471,3 +519,25 @@ A.saveSettings = (btn) => act(btn, async () => {
 
 A.logoutAll = (btn) => act(btn, async () => { await api('logout-all', { method: 'POST', body: {} }); showLogin(); });
 A.signOut = () => $('#bOut').click();
+
+
+/* ---------- library pages ---------- */
+function vTemplates() {
+  const n = (S.templates || []).length;
+  $('#view').innerHTML = `<div class="card pad"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div><h3>Quick-reply templates</h3><div class="hint">Short answers you reuse in the Inbox. ${n} saved.</div></div><div class="sp"></div><button class="btn p" data-act="tplEdit">Edit templates</button></div>
+    <div class="list" style="margin-top:12px">${(S.templates || []).map((t) => `<div class="li"><div class="nm">${esc(t.name || 'Template')}</div><div class="sub" style="white-space:pre-wrap">${esc(String(t.body || '').slice(0, 280))}</div></div>`).join('') || '<div class="empty">No templates yet.</div>'}</div></div>`;
+}
+let DNC = null;
+async function vDnc() {
+  $('#view').innerHTML = `<div class="card pad"><h3>Do not contact</h3><div class="hint">FlightLine will never email these addresses. Replying "unsubscribe" adds one automatically.</div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><input class="in" id="dncIn" type="email" placeholder="name@business.com" style="flex:1;min-width:200px" aria-label="Email to block"><button class="btn p" data-act="dncAdd">Add</button></div>
+    <div class="list" id="dncList" style="margin-top:12px"><div class="empty">Loading…</div></div></div>`;
+  try { DNC = (await api('suppress')).list; } catch (e) { toast(e.message, 4000); DNC = DNC || []; }
+  dncDraw();
+}
+function dncDraw() {
+  const el = $('#dncList'); if (!el) return;
+  el.innerHTML = DNC.length ? DNC.map((e) => `<div class="li" style="display:flex;align-items:center;gap:8px"><span class="nm">${esc(e)}</span><span class="sp"></span><button class="btn s" data-act="dncDel" data-e="${esc(e)}">Remove</button></div>`).join('') : '<div class="empty">Nobody is blocked.</div>';
+}
+A.dncAdd = async () => { const v = $('#dncIn').value; try { DNC = (await api('suppress', { method: 'POST', body: { email: v } })).list; S.suppressed = DNC.length; $('#dncIn').value = ''; dncDraw(); chrome(); } catch (e) { toast(e.message, 4000); } };
+A.dncDel = async (t) => { try { DNC = (await api('suppress', { method: 'POST', body: { email: t.dataset.e, remove: true } })).list; S.suppressed = DNC.length; dncDraw(); chrome(); } catch (e) { toast(e.message, 4000); } };
