@@ -64,6 +64,7 @@
   function items(q) {
     const out = [];
     Object.entries(ROUTES).forEach(([k, v]) => out.push({ t: 'Go to ' + v[0], s: 'page', run: () => go(k) }));
+    out.push({ t: 'Open the assistant', s: 'Ctrl J', run: () => openAssist(true) });
     out.push({ t: 'Add a lead', s: 'action', run: () => { go('leads'); setTimeout(() => A.addLeadModal(), 50); } });
     out.push({ t: 'Toggle dark mode', s: 'action', run: toggleTheme });
     out.push({ t: 'Toggle compact / comfy', s: 'action', run: () => A.density() });

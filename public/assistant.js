@@ -3,17 +3,39 @@
 const TOOL_LABEL = { get_overview: 'Checked your pipeline', search_leads: 'Searched leads', get_lead: 'Opened a lead', find_leads: 'Searched the map', audit_leads: 'Audited sites', draft_email: 'Wrote a draft', update_lead: 'Updated a lead', add_lead: 'Added a lead', delete_lead: 'Deleted a lead', queue_send: 'Queued an email' };
 const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/^[-*] /gm, '• ');
 
-function vAssistant() {
-  $('#view').innerHTML = `<div class="card chatwrap">
-    <div class="tools"><b>Assistant</b><span class="hint hm">Ask anything. It can find leads, audit sites, write drafts and queue emails for your approval.</span><span class="sp"></span><button class="btn s" data-act="chatClear">New chat</button></div>
-    <div class="msgs" id="msgs"></div>
-    <div class="compose"><textarea id="cIn" aria-label="Message the assistant" rows="1" placeholder="Message the assistant…"></textarea><button class="btn p" data-act="chatSend" aria-label="Send">${ico('send')}</button></div>
-  </div>`;
+/* The assistant lives in a slide-over panel, so it is one tap away from any page and never replaces what you are looking at. */
+let asstBuilt = false;
+function buildAssistant() {
+  if (asstBuilt) return;
+  asstBuilt = true;
+  $('#asst').innerHTML = `
+    <div class="ah"><b>${ico('spark')} Assistant</b><span class="sp"></span><button class="btn s g" data-act="chatClear">New chat</button><button class="btn s g" data-act="assistClose" aria-label="Close assistant">${ico('x') || '✕'}</button></div>
+    <div class="msgs" id="msgs" aria-live="polite"></div>
+    <div class="compose"><textarea id="cIn" aria-label="Message the assistant" rows="1" placeholder="Ask, or tell it what to do…"></textarea><button class="btn p" data-act="chatSend" aria-label="Send">${ico('send')}</button></div>`;
   const ta = $('#cIn');
   ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatSend(); } });
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; });
   renderMsgs();
 }
+function openAssist(open) {
+  const p = $('#asst'); if (!p) return;
+  const on = open === undefined ? !p.classList.contains('on') : !!open;
+  if (on) buildAssistant();
+  p.classList.toggle('on', on);
+  p.setAttribute('aria-hidden', String(!on));
+  if (on) p.removeAttribute('inert'); else p.setAttribute('inert', '');
+  const f = $('#bAsst'); if (f) { f.setAttribute('aria-expanded', String(on)); f.classList.toggle('p', on); }
+  if (on) setTimeout(() => $('#cIn') && $('#cIn').focus({ preventScroll: true }), 60);
+  else if (f && document.activeElement && p.contains(document.activeElement)) f.focus({ preventScroll: true });
+}
+A.assist = () => openAssist();
+A.assistClose = () => openAssist(false);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('#asst') && $('#asst').classList.contains('on') && !$('#ov').innerHTML.trim()) openAssist(false);
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j' && !$('#app').classList.contains('hide')) { e.preventDefault(); openAssist(); }
+});
+document.addEventListener('DOMContentLoaded', () => { const f = $('#bAsst'); if (f) f.innerHTML = ico('spark') + '<span class="hm">Assistant</span>'; });
+if (document.readyState !== 'loading') { const f = $('#bAsst'); if (f) f.innerHTML = ico('spark') + '<span class="hm">Assistant</span>'; }
 
 function pendHtml(m, mi) {
   const ps = (m.pending || []);

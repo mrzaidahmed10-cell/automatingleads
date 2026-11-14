@@ -26,7 +26,19 @@ Searches OpenStreetMap (and Google Places if you add a key). The server asks eve
 - **Found online**: the site is saved to the lead and audited.
 Use **Verify websites** on the Leads page to re-check any leads, and the **Unchecked** and **Hot** filters to sort them. Searches are checked in small batches because Cloudflare's free plan limits outbound requests per call.
 
-Optional secrets that improve results: `GOOGLE_PLACES_KEY` (many more businesses, with ratings and review counts; Google may require billing) and `BRAVE_API_KEY` (more reliable web search than the default, which can get blocked on shared server IPs).
+**Data sources and keys.** Everything outside the app is one of these, tried in order, and **Settings, Data sources** has a Test button for each so you can see what actually works from your Cloudflare site. Keys are Cloudflare secrets only (Workers & Pages, your project, Settings, Variables and Secrets), then redeploy.
+
+| Secret | What it adds | Cost |
+|---|---|---|
+| `SERPER_API_KEY` (serper.dev) | Google Maps data (phone, website, ratings, so "no website" is real) and Google search for website and contact checks | 2,500 free searches, no card |
+| `TAVILY_API_KEY` (tavily.com) | Web search for website and contact checks | 1,000 free searches a month, no card |
+| `JINA_API_KEY` (jina.ai/reader) | Optional. Pages that refuse server requests are read through Jina. Works without a key at 20 per minute | Free |
+| `GOOGLE_PLACES_KEY` | Official Google Places data | Needs a billing card |
+| `BRAVE_API_KEY` | Web search | Needs a card on file |
+
+With no keys at all it still works: OpenStreetMap for businesses, then DuckDuckGo, DuckDuckGo Lite, Bing and Mojeek pages for search (these are often blocked on shared server addresses, which is why Serper and Tavily are recommended). Email domains are checked over DNS (free, no key) and addresses that cannot receive mail are dropped.
+
+**Gmail keeps asking for a new token?** Apps left in Testing mode expire their refresh token after 7 days. In Google Cloud open APIs & Services, OAuth consent screen, and press **Publish app** (personal use needs no review). Then make a new token once in the OAuth Playground and replace `GMAIL_REFRESH_TOKEN`. Data sources, Gmail sending, shows whether the token currently works.
 
 **Contact info.** After the website check, FlightLine also looks up each lead's email, phone and social pages from public sources: the business's own site (contact and about pages, structured data, protected and obfuscated addresses), web search results, and its public Facebook and Yelp pages. It never overwrites something you typed. Every address it finds is kept as a one-click choice on the lead (in the row and in the lead panel), labelled with where it came from. Facebook and Yelp often refuse to show their pages to servers, so those are best effort and the lead says which sources it actually reached. Use **Find contacts** to run it on your selection (or every lead still missing an email), **Export CSV** to download leads as a spreadsheet, and the **Sort** menu to reorder the list.
 

@@ -8,13 +8,12 @@
   if (reduce.matches) return;
 
   // what can be pulled: selector -> how strongly (1 = default)
-  const PULL = [
-    ['.lg-button', 1], ['.lg-tab-bar', 0.45], ['.lg-segmented', 0.6], ['.lg-switch', 0.8],
-    ['.btn', 1], ['.chip', 1], ['.nav a', 0.7], ['.tabbar', 0.4], ['.kpi', 0.35], ['.todo', 0.35], ['.pill', 0.8],
-  ];
+  // Only plain buttons and chips, and only with a mouse. Navigation, tabs, switches, inputs, tables and dialogs are never touched.
+  const PULL = [['.lg-button', 1], ['.btn', 1], ['.chip', 1]];
   const SEL = PULL.map((p) => p[0]).join(',');
   const gain = (el) => { for (const [s, g] of PULL) if (el.matches(s)) return g; return 1; };
-  const NO = 'input,select,textarea,[contenteditable],.rt,.tw,.msgs,.drawer,.modal,.pal,.scrim';
+  const NO = 'input,select,textarea,[contenteditable],table,.tw,.msgs,.drawer,.modal,.pal,.scrim,.asst,nav,.tabbar,.lg-tab-bar,.lg-segmented,.lg-switch,#toast';
+  const off = () => document.documentElement.dataset.fx === 'calm';
 
   const live = new Map(); // el -> state
   let raf = 0, last = 0;
@@ -80,10 +79,9 @@
   const kick = () => { if (!raf) { last = performance.now(); raf = requestAnimationFrame(frame); } };
 
   function down(e) {
-    if (e.button > 0 || !e.isPrimary) return;
+    if (e.button > 0 || !e.isPrimary || e.pointerType !== 'mouse' || off()) return;
     const el = e.target.closest && e.target.closest(SEL);
-    if (!el || el.disabled || (e.target.closest(NO) && !el.matches('.lg-tab-bar,.lg-segmented,.lg-switch,.lg-button,.btn,.chip'))) return;
-    if (e.target.closest('input,select,textarea,[contenteditable]')) return;
+    if (!el || el.disabled || el.closest(NO)) return;
     const r = el.getBoundingClientRect();
     const s = S(el);
     s.down = true; s.id = e.pointerId; s.x0 = e.clientX; s.y0 = e.clientY; s.px = e.clientX; s.py = e.clientY; s.pt = performance.now();
@@ -97,16 +95,18 @@
   function move(e) {
     for (const s of live.values()) {
       if (!s.down || e.pointerId !== s.id) continue;
+      if (off()) { s.down = false; s.tx = s.ty = s.tst = s.tpr = 0; continue; }
       const now = performance.now(), dtm = Math.max(1, now - s.pt);
       const vx = (e.clientX - s.px) / dtm, vy = (e.clientY - s.py) / dtm; // px per ms
       s.spd = Math.min(4, s.spd * 0.6 + Math.hypot(vx, vy) * 0.4);
       s.px = e.clientX; s.py = e.clientY; s.pt = now;
       const dx = e.clientX - s.x0, dy = e.clientY - s.y0, dist = Math.hypot(dx, dy);
-      if (dist > 3) s.moved = true;
+      if (dist > 10) s.moved = true; // small hand jitter during a click is still a click
       // rubber band: follows the pointer but with growing resistance
       const R = 14 + Math.min(s.w, 220) * 0.08;
       const rub = (d) => R * Math.tanh(d / (R * 2.2)) * s.g;
-      s.tx = rub(dx); s.ty = 0; s.ang = 0; // side to side only
+      const dz = (d) => Math.sign(d) * Math.max(0, Math.abs(d) - 8);
+      s.tx = rub(dz(dx)); s.ty = 0; s.ang = 0; // side to side only, after a small dead zone
       // thinning: more the farther you pull, and a lot more the faster you pull
       const size = Math.max(s.w, s.h);
       s.tst = Math.min(0.14, (Math.abs(dx) / (size * 5) + s.spd * 0.03) * s.g);
@@ -143,7 +143,7 @@
   /* ---- light that follows the pointer on glass panels ---- */
   let hov = null, pend = 0, px = 0, py = 0;
   window.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'touch') return;
+    if (e.pointerType === 'touch' || off()) return;
     px = e.clientX; py = e.clientY;
     if (pend) return;
     pend = requestAnimationFrame(() => {

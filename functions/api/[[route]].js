@@ -3,6 +3,8 @@ import { findBusinesses } from '../../lib/osm.js';
 import { auditSite } from '../../lib/audit.js';
 import { verifySite } from '../../lib/verify.js';
 import { enrichContacts, rank } from '../../lib/enrich.js';
+import { CATALOG, testSource, configuredMap, jinaFetch } from '../../lib/providers.js';
+import { cfg } from '../../lib/audit.js';
 import { draftEmail, draftReply, runAgent, testAI } from '../../lib/ai.js';
 import { sendEmail, emailReady, renderEmail } from '../../lib/email.js';
 
@@ -40,6 +42,8 @@ const host = (u) => {
 
 export async function onRequest({ request, env, params }) {
   const route = [].concat(params.route || []);
+  cfg.env = env;
+  cfg.jina = jinaFetch;
   const [a, b] = route;
   const m = request.method;
   let body = {};
@@ -59,6 +63,16 @@ export async function onRequest({ request, env, params }) {
     if (a === 'discover-import' && m === 'POST') return await discoverImport(env, body);
     if (a === 'verify' && m === 'POST') return await verify(env, body);
     if (a === 'enrich' && m === 'POST') return await enrich(env, body);
+    if (a === 'sources' && m === 'GET') {
+      const conf = { ...configuredMap(env), gmail: emailReady(env) };
+      return json({ sources: CATALOG.map((c) => ({ ...c, configured: c.key ? !!env[c.key] : c.id === 'gmail' ? conf.gmail : true })) });
+    }
+    if (a === 'sources-test' && m === 'POST') {
+      const c = CATALOG.find((x) => x.id === String(body.id));
+      if (!c) return json({ error: 'Unknown source' }, 400);
+      if (c.key && !env[c.key]) return json({ ok: false, ms: 0, detail: `Add ${c.key} in Cloudflare first` });
+      return json(await testSource(env, c.id));
+    }
     if (a === 'leads-bulk' && m === 'POST') return await bulkLeads(env, body);
     if (a === 'leads-undo' && m === 'POST') return await undoDelete(env);
     if (a === 'leads' && !b && m === 'POST') return await addLead(env, body);
@@ -140,7 +154,7 @@ async function state(env) {
     templates: db.templates,
     sentToday: db.sent[today()] || 0,
     suppressed: db.suppress.length,
-    configured: { groq: !!env.GROQ_API_KEY, email: emailReady(env), places: !!env.GOOGLE_PLACES_KEY, search: !!env.BRAVE_API_KEY },
+    configured: { groq: !!env.GROQ_API_KEY, email: emailReady(env), places: !!env.GOOGLE_PLACES_KEY, search: !!(env.BRAVE_API_KEY || env.SERPER_API_KEY || env.TAVILY_API_KEY), serper: !!env.SERPER_API_KEY, tavily: !!env.TAVILY_API_KEY },
     security: { weakPassword: String(env.DASH_PASSWORD || '').length < 12, separateSecret: !!env.SESSION_SECRET },
   });
 }

@@ -39,6 +39,7 @@ const IC = {
   rows: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   out: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
+  x: '<path d="M18 6L6 18M6 6l12 12"/>',
   reply: '<path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 00-4-4H4"/>',
 };
 const ico = (k) => `<svg class="i" viewBox="0 0 24 24">${IC[k] || ''}</svg>`;
@@ -130,15 +131,16 @@ $('#bThemeM').onclick = toggleTheme;
 
 /* ---------- routing ---------- */
 const ROUTES = {
-  dashboard: ['Dashboard', () => vDash(), 'home'],
+  dashboard: ['Overview', () => vDash(), 'home'],
   leads: ['Leads', () => vLeads(), 'users'],
-  replies: ['Quick replies', () => vReplies(), 'mail'],
-  analytics: ['Analytics', () => vAnalytics(), 'chart'],
-  assistant: ['Assistant', () => vAssistant(), 'spark'],
+  replies: ['Inbox', () => vReplies(), 'mail'],
   settings: ['Settings', () => vSettings(), 'gear'],
 };
-const page = () => { const k = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0]; return ROUTES[k] ? k : 'dashboard'; };
+const ALIAS = { analytics: 'dashboard', assistant: 'dashboard' }; // old links still land somewhere sensible
+const rawKey = () => (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
+const page = () => { const r = rawKey(), k = ALIAS[r] || r; return ROUTES[k] ? k : 'dashboard'; };
 function route() {
+  if (rawKey() === 'assistant') { history.replaceState(null, '', '#/dashboard'); setTimeout(() => openAssist(true), 0); }
   if (window.FLGlass) window.FLGlass.unmountWithin($('#view'));
   const k = page();
   $('#title').textContent = ROUTES[k][0]; document.title = ROUTES[k][0] + ' · FlightLine';
@@ -168,7 +170,7 @@ function chrome() {
 function refreshUI() {
   chrome();
   const k = page();
-  if (k === 'dashboard') vDash(); else if (k === 'analytics') vAnalytics();
+  if (k === 'dashboard') vDash();
   else if (k === 'leads') renderLeadsTable(); else if (k === 'replies') renderReplyList();
 }
 async function boot() {
@@ -185,6 +187,7 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-act]');
   if (t && A[t.dataset.act]) A[t.dataset.act](t, e);
 });
+document.addEventListener('toggle', (e) => { if (e.target.id === 'insights') store.set('ins', e.target.open ? '1' : '0'); }, true);
 document.addEventListener('change', (e) => {
   const t = e.target.closest('[data-change]');
   if (t && C[t.dataset.change]) C[t.dataset.change](t, e);
@@ -306,28 +309,28 @@ function vDash() {
   });
   ev.sort((a, b) => b.t - a.t);
 
+  const unset = setup.filter((x) => !x[1]);
   $('#view').innerHTML = `
-    <h2 class="hello">${greet}${name ? ', ' + esc(name) : ''}</h2>
-    ${S.security?.weakPassword ? `<div class="banner" role="alert"><b>Weak password.</b> Your dashboard password is under 12 characters. Set a longer one (DASH_PASSWORD in Cloudflare) so nobody can guess it.</div>` : ''}
-    <p class="hint" style="margin:0 0 14px">${L.length ? 'Here is where your outreach stands.' : 'Let us get your first leads in.'}</p>
-    ${setup.some((x) => !x[1]) ? `<div class="card pad" style="margin-bottom:16px"><h3>Get set up</h3><div class="hint" style="margin-bottom:6px">A few quick steps before your first send.</div>${setup.map(([t, d, to]) => `<div class="check ${d ? 'done' : ''}"><span class="dot">${d ? ico('check') : ''}</span><span>${t}</span>${d ? '' : `<a class="btn s" style="margin-left:auto" href="#/${to}">Open</a>`}</div>`).join('')}</div>` : ''}
-    <div class="grid g5" style="margin-bottom:16px">
-      <div class="card kpi"><div class="ic">${ico('users')}</div><b>${L.length}</b><span>Leads</span><small>${withEmail} with email</small></div>
-      <div class="card kpi"><div class="ic">${ico('send')}</div><b>${cont}</b><span>Emailed</span><small>${S.sentToday}${lim ? ' / ' + lim : ''} today</small></div>
-      <div class="card kpi"><div class="ic">${ico('reply')}</div><b>${rep}</b><span>Replies</span><small>${cont ? Math.round((rep / cont) * 100) + '% reply rate' : 'no sends yet'}</small></div>
-      <div class="card kpi"><div class="ic">${ico('edit')}</div><b>${n((l) => l.status === 'drafted')}</b><span>Drafts waiting</span><small>${due} follow-ups due</small></div>
-      <div class="card kpi"><div class="ic">${ico('mail')}</div><b>${S.suppressed}</b><span>Do not contact</span><small>never emailed again</small></div>
+    <div class="hrow"><h2 class="hello">${greet}${name ? ', ' + esc(name) : ''}</h2><span class="hint">${L.length ? 'Here is where your outreach stands.' : 'Let us get your first leads in.'}</span></div>
+    ${S.security?.weakPassword ? `<div class="banner" role="alert"><b>Weak password.</b> Your dashboard password is under 12 characters. Set a longer one (DASH_PASSWORD in Cloudflare).</div>` : ''}
+    ${unset.length ? `<div class="card pad setup"><b>Get set up</b>${unset.map(([t, , to]) => `<a class="chip" href="#/${to}">${esc(t)}</a>`).join('')}</div>` : ''}
+    <div class="card kstrip">
+      <div><b>${L.length}</b><span>Leads</span><small>${withEmail} with email</small></div>
+      <div><b>${cont}</b><span>Emailed</span><small>${S.sentToday}${lim ? ' / ' + lim : ''} today</small></div>
+      <div><b>${rep}</b><span>Replies</span><small>${cont ? Math.round((rep / cont) * 100) + '% rate' : 'none yet'}</small></div>
+      <div><b>${n((l) => l.status === 'drafted')}</b><span>Drafts</span><small>${due} follow-ups due</small></div>
+      <div><b>${S.suppressed}</b><span>Do not contact</span><small>never emailed</small></div>
     </div>
-    ${todos.length ? `<div class="grid g2" style="margin-bottom:16px">${todos.slice(0, 4).map((t) => `<button class="todo" data-act="go" data-to="${t.to}" ${t.filter ? `data-filter="${t.filter}"` : ''} ${t.rf ? `data-rf="${t.rf}"` : ''}><div class="n">${esc(t.n)}</div><div><b>${esc(t.t)}</b><span>${esc(t.d)}</span></div></button>`).join('')}</div>` : ''}
-    <div class="grid g2" style="margin-bottom:16px">
-      <div class="card pad"><h3>Last 14 days</h3>${lineChart(act14.labels, [{ name: 'Leads found', color: 'var(--c1)', values: act14.found }, { name: 'Emails sent', color: 'var(--c2)', values: act14.sent }, { name: 'Replies', color: 'var(--c4)', values: act14.replied }], 220)}</div>
-      <div class="card pad"><h3>Pipeline</h3><div class="hint">How leads move toward a reply</div>${hbars(funnel)}</div>
+    ${todos.length ? `<div class="grid g2 tight">${todos.slice(0, 4).map((t) => `<button class="todo" data-act="go" data-to="${t.to}" ${t.filter ? `data-filter="${t.filter}"` : ''} ${t.rf ? `data-rf="${t.rf}"` : ''}><div class="n">${esc(t.n)}</div><div><b>${esc(t.t)}</b><span>${esc(t.d)}</span></div></button>`).join('')}</div>` : ''}
+    <div class="grid g2 tight">
+      <div class="card pad"><h3>Last 14 days</h3>${lineChart(act14.labels, [{ name: 'Leads found', color: 'var(--c1)', values: act14.found }, { name: 'Emails sent', color: 'var(--c2)', values: act14.sent }, { name: 'Replies', color: 'var(--c4)', values: act14.replied }], 170)}</div>
+      <div class="card pad"><h3>Pipeline</h3>${hbars(funnel)}<div class="feed" style="margin-top:8px">${ev.slice(0, 3).map((e) => `<div><span class="dt">${ico(e.k === 'reply' ? 'reply' : 'send')}</span><span>${e.x}</span><time>${ago(e.t)}</time></div>`).join('') || '<div class="hint">Emails and replies will show up here.</div>'}</div></div>
     </div>
-    <div class="card pad"><h3>Recent activity</h3>${ev.length ? `<div class="feed">${ev.slice(0, 7).map((e) => `<div><span class="dt">${ico(e.k === 'reply' ? 'reply' : 'send')}</span><span>${e.x}</span><time>${ago(e.t)}</time></div>`).join('')}</div>` : '<div class="hint" style="padding:10px 0">Nothing sent yet. Your emails and replies will show up here.</div>'}</div>`;
+    <details class="card ins" id="insights" ${store.get('ins', '0') === '1' ? 'open' : ''}><summary><b>Insights</b><span class="hint">reply rates by lead type, daily sends, categories</span></summary><div class="insb">${analyticsHtml()}</div></details>`;
 }
 
 /* ---------- analytics ---------- */
-function vAnalytics() {
+function analyticsHtml() {
   const L = S.leads, act = activity(30);
   const cont = L.filter(contacted), rep = L.filter((l) => l.status === 'replied');
   const rate = cont.length ? Math.round((rep.length / cont.length) * 100) : 0;
@@ -343,8 +346,8 @@ function vAnalytics() {
   const colors = { 'No website': 'var(--c4)', 'Poor site': 'var(--c3)', 'Dated site': 'var(--c1)', 'Decent site': 'var(--c2)', 'Not audited': 'var(--line)' };
   const sentTotal = act.sent.reduce((a, b) => a + b, 0);
 
-  $('#view').innerHTML = `
-    <div class="grid g5" style="margin-bottom:16px">
+  return `
+    <div class="grid g5 tight">
       <div class="card kpi"><b>${L.length}</b><span>Total leads</span></div>
       <div class="card kpi"><b>${cont.length}</b><span>Emailed</span></div>
       <div class="card kpi"><b>${rep.length}</b><span>Replies</span></div>
@@ -352,11 +355,11 @@ function vAnalytics() {
       <div class="card kpi"><b>${avgReply ?? '–'}</b><span>Avg days to reply</span></div>
     </div>
     ${best ? `<div class="banner" style="background:var(--acc2);color:var(--acc)"><b>Insight:</b> ${esc(best.g)} leads reply the most so far (${best.rate}% of ${best.c} emailed). Consider targeting more of them.</div>` : ''}
-    <div class="grid g2" style="margin-bottom:16px">
+    <div class="grid g2 tight">
       <div class="card pad"><h3>Emails sent per day</h3><div class="hint">Last 30 days · ${sentTotal} total</div>${barChart(act.labels, act.sent)}</div>
       <div class="card pad"><h3>Leads found vs replies</h3>${lineChart(act.labels, [{ name: 'Leads found', color: 'var(--c1)', values: act.found }, { name: 'Replies', color: 'var(--c4)', values: act.replied }], 190)}</div>
     </div>
-    <div class="grid g2" style="margin-bottom:16px">
+    <div class="grid g2 tight">
       <div class="card pad"><h3>Lead quality</h3><div class="hint">How weak each lead's web presence is</div>${donut(gData.map((x) => ({ label: x.g, value: x.n, color: colors[x.g] })))}</div>
       <div class="card"><div class="pad" style="padding-bottom:6px"><h3>Which leads reply?</h3><div class="hint">Needs a few sends per group to mean much</div></div><div class="tw"><table><thead><tr><th>Group</th><th>Leads</th><th>Emailed</th><th>Replied</th><th>Rate</th></tr></thead><tbody>${gData.map((x) => `<tr><td>${x.g}</td><td>${x.n}</td><td>${x.c}</td><td>${x.r}</td><td>${x.rate == null ? '–' : x.rate + '%'}</td></tr>`).join('')}</tbody></table></div></div>
     </div>
@@ -365,49 +368,94 @@ function vAnalytics() {
 
 /* ---------- settings ---------- */
 function vSettings() {
-  const s = S.settings, cf = S.configured;
-  const field = (id, label, val, ph = '', type = 'text') => `<div><label>${label}</label><input id="${id}" type="${type}" value="${esc(val)}" placeholder="${esc(ph)}"></div>`;
+  const tab = ui.setTab || 'profile';
   $('#view').innerHTML = `
+    <div class="chips tabs" role="tablist" aria-label="Settings sections">${[['profile', 'Profile & voice'], ['sources', 'Data sources'], ['account', 'Account']].map(([k, t]) => `<button class="chip ${tab === k ? 'on' : ''}" role="tab" aria-selected="${tab === k}" data-act="setTab" data-t="${k}">${t}</button>`).join('')}</div>
+    <div id="setBody"></div>`;
+  if (tab === 'profile') setProfile(); else if (tab === 'sources') setSources(); else setAccount();
+}
+A.setTab = (t) => { ui.setTab = t.dataset.t; vSettings(); };
+
+function setProfile() {
+  const s = S.settings;
+  const field = (id, label, val, ph = '', type = 'text') => `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" value="${esc(val)}" placeholder="${esc(ph)}"></div>`;
+  $('#setBody').innerHTML = `
     <div class="grid g2" style="align-items:start">
-      <div class="stack">
-        <div class="card pad stack"><h3>You</h3><div class="hint">Your name is the sender name. Emails go out as plain text, exactly as you write them, with nothing added.</div>
-          ${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}
-          ${field('sAgency', 'Agency name', s.businessName, 'FlightLine')}
-          <div class="grid g2">${field('sReply', 'Your email (reply-to and test sends)', s.replyTo, 'your Gmail address', 'email')}${field('sLim', 'Daily send cap (0 = no cap)', s.dailyLimit, '0', 'number')}</div>
-          <div class="grid g2">${field('sGap', 'Seconds between bulk sends (0 = none)', s.sendGap, '0', 'number')}<div class="hint" style="align-self:end">Both are optional guardrails. Leave at 0 for none.</div></div>
-        </div>
-        <div class="card pad stack"><h3>AI voice</h3><div class="hint">The writer uses these to sound like you and stay accurate.</div>
-          <div><label>Tone</label><select id="sTone">${[['friendly', 'Friendly (default)'], ['casual', 'Casual and short'], ['direct', 'Direct'], ['professional', 'Professional']].map(([v, t]) => `<option value="${v}" ${s.tone === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-          <div><label>Your offer (one or two sentences)</label><textarea id="sOffer" style="min-height:80px">${esc(s.offer)}</textarea></div>
-          <div><label>About you (optional, e.g. "local developer based in Iowa City")</label><input id="sAbout" value="${esc(s.about)}"></div>
-          <div><label>Notes for replies and chat (pricing, process, turnaround)</label><textarea id="sKnow" style="min-height:90px" placeholder="e.g. Sites start at $X, usually live in 1 week, I do hosting for $Y/mo">${esc(s.knowledge)}</textarea></div>
-          ${field('sPort', 'Portfolio link (optional)', s.portfolioUrl)}
-        </div>
-        <button class="btn p" data-act="saveSettings" style="justify-content:center">Save settings</button>
+      <div class="card pad stack"><h3>You</h3><div class="hint">Emails go out as plain text, exactly as you write them, with nothing added.</div>
+        <div class="grid g2">${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}${field('sAgency', 'Agency name', s.businessName, 'FlightLine')}</div>
+        ${field('sReply', 'Your email (reply-to and test sends)', s.replyTo, 'your Gmail address', 'email')}
+        <div class="grid g2">${field('sLim', 'Daily send cap (0 = none)', s.dailyLimit, '0', 'number')}${field('sGap', 'Seconds between bulk sends (0 = none)', s.sendGap, '0', 'number')}</div>
+        ${field('sPort', 'Portfolio link (optional)', s.portfolioUrl)}
       </div>
-      <div class="stack">
-        <div class="card pad"><h3>Connections</h3>
-          <div class="check ${cf.email ? 'done' : ''}"><span class="dot">${cf.email ? ico('check') : ''}</span><span>Email sending ${cf.email ? '' : '(missing secrets, see README)'}</span></div>
-          <div class="check ${cf.groq ? 'done' : ''}"><span class="dot">${cf.groq ? ico('check') : ''}</span><span>AI writer ${cf.groq ? '' : '(add GROQ_API_KEY)'}</span></div>
-          <div class="check done"><span class="dot">${ico('check')}</span><span>Lead finder (OpenStreetMap, no key needed)</span></div>
-          <div class="check ${cf.places ? 'done' : ''}"><span class="dot">${cf.places ? ico('check') : ''}</span><span>Google Places ${cf.places ? '' : '(optional, finds far more businesses. Add GOOGLE_PLACES_KEY)'}</span></div>
-          <div class="check ${cf.search ? 'done' : ''}"><span class="dot">${cf.search ? ico('check') : ''}</span><span>Brave Search ${cf.search ? '' : '(optional, stronger website checks. Add BRAVE_API_KEY)'}</span></div>
-          <div class="acts" style="margin-top:10px"><button class="btn s" data-act="testAI">${ico('spark')} Test AI</button></div>
-          <div id="aiTest" class="hint" style="margin-top:8px"></div>
-          <div class="hint" style="margin-top:10px">API keys live in Cloudflare secrets and never reach this page.</div>
-        </div>
-        <div class="card pad"><h3>${ico('shield')} Security</h3>
-          <div class="check ${S.security?.weakPassword ? '' : 'done'}"><span class="dot">${S.security?.weakPassword ? '' : ico('check')}</span><span>${S.security?.weakPassword ? 'Password is short. Use 12+ characters.' : 'Strong password'}</span></div>
-          <div class="check done"><span class="dot">${ico('check')}</span><span>Sign-in locks after repeated wrong passwords</span></div>
-          <div class="check done"><span class="dot">${ico('check')}</span><span>Sessions expire after 7 days</span></div>
-          <div class="acts" style="margin-top:10px"><button class="btn s" data-act="signOut">Sign out</button><button class="btn s d" data-act="logoutAll">Sign out of all devices</button></div>
-        </div>
-        <div class="card pad"><h3>Tips for better replies</h3>
-          <ul class="hint" style="margin:8px 0 0;padding-left:18px;line-height:1.7"><li>Send a test to yourself first and check spam.</li><li>A brand new sending address can land in spam if it blasts a lot at once. A cap or a gap is optional, your call.</li><li>Fill in your notes above so reply drafts quote real prices and timelines.</li><li>Follow up once after 3-4 days; two emails is plenty.</li></ul>
-        </div>
+      <div class="card pad stack"><h3>AI voice</h3><div class="hint">The writer uses these to sound like you and stay accurate.</div>
+        <div><label for="sTone">Tone</label><select id="sTone">${[['friendly', 'Friendly (default)'], ['casual', 'Casual and short'], ['direct', 'Direct'], ['professional', 'Professional']].map(([v, t]) => `<option value="${v}" ${s.tone === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div><label for="sOffer">Your offer (one or two sentences)</label><textarea id="sOffer" style="min-height:64px">${esc(s.offer)}</textarea></div>
+        <div><label for="sAbout">About you (optional)</label><input id="sAbout" value="${esc(s.about)}"></div>
+        <div><label for="sKnow">Notes for replies and chat (pricing, process, turnaround)</label><textarea id="sKnow" style="min-height:72px" placeholder="e.g. Sites start at $X, live in about a week, hosting $Y/mo">${esc(s.knowledge)}</textarea></div>
+      </div>
+    </div>
+    <div class="acts" style="margin-top:12px"><button class="btn p" data-act="saveSettings">Save settings</button><button class="btn s" data-act="testAI">${ico('spark')} Test AI</button><span id="aiTest" class="hint"></span></div>`;
+}
+
+function setAccount() {
+  const fx = (() => { try { return localStorage.getItem('fx') === 'calm' ? 'calm' : 'full'; } catch { return 'full'; } })();
+  $('#setBody').innerHTML = `
+    <div class="grid g2" style="align-items:start">
+      <div class="card pad"><h3>${ico('shield')} Security</h3>
+        <div class="check ${S.security?.weakPassword ? '' : 'done'}"><span class="dot">${S.security?.weakPassword ? '' : ico('check')}</span><span>${S.security?.weakPassword ? 'Password is short. Use 12+ characters.' : 'Strong password'}</span></div>
+        <div class="check done"><span class="dot">${ico('check')}</span><span>Sign-in locks after repeated wrong passwords</span></div>
+        <div class="check done"><span class="dot">${ico('check')}</span><span>Sessions expire after 7 days</span></div>
+        <div class="acts" style="margin-top:10px"><button class="btn s" data-act="signOut">Sign out</button><button class="btn s d" data-act="logoutAll">Sign out of all devices</button></div>
+      </div>
+      <div class="card pad stack"><h3>Look and feel</h3>
+        <div><label for="fxSel">Glass effects</label><select id="fxSel" data-change="fxSet"><option value="full" ${fx === 'full' ? 'selected' : ''}>Full (drifting orbs, pointer light, springy buttons)</option><option value="calm" ${fx === 'calm' ? 'selected' : ''}>Calm (static glass only)</option></select></div>
+        <div class="hint">Effects never block clicks or typing. Switch to Calm if you want it fully still. Devices set to reduce motion are always calm.</div>
+        <h3 style="margin-top:6px">Tips for better replies</h3>
+        <ul class="hint" style="margin:0;padding-left:18px;line-height:1.7"><li>Send a test to yourself first and check spam.</li><li>Fill in your notes so reply drafts quote real prices.</li><li>Follow up once after 3-4 days; two emails is plenty.</li></ul>
       </div>
     </div>`;
 }
+C.fxSet = (i) => { try { localStorage.setItem('fx', i.value); } catch {} document.documentElement.dataset.fx = i.value; toast(i.value === 'calm' ? 'Glass effects calmed' : 'Glass effects on', 1800); };
+
+const SRC_STATE = {};
+async function setSources() {
+  $('#setBody').innerHTML = '<div class="card pad hint">Loading…</div>';
+  let list;
+  try { list = (await api('sources')).sources; } catch (e) { $('#setBody').innerHTML = `<div class="card pad hint">${esc(e.message)}</div>`; return; }
+  ui.sources = list;
+  const row = (c) => {
+    const st = SRC_STATE[c.id];
+    const needsKey = c.key && !c.configured;
+    return `<div class="src" data-id="${c.id}">
+      <span class="sd ${needsKey ? 'off' : st ? (st.ok ? 'ok' : 'bad') : 'idle'}" aria-hidden="true"></span>
+      <div class="si"><b>${esc(c.name)}</b>${c.recommended && needsKey ? ' <span class="pill acc">Recommended</span>' : ''}<span class="sub">${esc(c.role)}</span><span class="sub">${esc(c.free || '')}</span></div>
+      <div class="sr2">${needsKey
+        ? `<code>${esc(c.key)}</code>${c.signup ? `<a class="btn s" href="${esc(c.signup)}" target="_blank" rel="noopener noreferrer">Get key</a>` : ''}`
+        : `<button class="btn s" data-act="srcTest" data-id="${c.id}">Test</button>`}</div>
+      <div class="sres" id="sr-${c.id}">${st ? `<span style="color:var(--${st.ok ? 'ok' : 'bad'})">${st.ok ? '✓' : '✗'}</span> ${esc(st.detail)} <small>${st.ms} ms</small>` : ''}</div>
+    </div>`;
+  };
+  $('#setBody').innerHTML = `<div class="card pad">
+    <div class="srchd"><div><h3>Data sources</h3><div class="hint">Where leads and contact details come from. If one is blocked, the next takes over. Test shows what actually works from your Cloudflare site.</div></div><button class="btn s p" data-act="srcTestAll">Test all</button></div>
+    <div class="srclist">${list.map(row).join('')}</div>
+    <details class="how"><summary>How to add a key</summary><ol class="hint"><li>Open the source's sign-up link above and copy the key (the recommended ones need no card).</li><li>In Cloudflare open <b>Workers & Pages</b>, your project, <b>Settings</b>, <b>Variables and Secrets</b>, and add it with the exact name shown, as a secret.</li><li>Redeploy, come back here and press <b>Test</b>. Keys never reach this page.</li></ol></details>
+  </div>`;
+}
+async function runSrc(id) {
+  const el = $('#sr-' + id); if (el) el.innerHTML = '<span class="hint">Testing…</span>';
+  let r; try { r = await api('sources-test', { method: 'POST', body: { id } }); } catch (e) { r = { ok: false, ms: 0, detail: e.message }; }
+  SRC_STATE[id] = r;
+  const row = document.querySelector(`.src[data-id="${id}"]`);
+  if (row) { row.querySelector('.sd').className = 'sd ' + (r.ok ? 'ok' : 'bad'); }
+  if (el) el.innerHTML = `<span style="color:var(--${r.ok ? 'ok' : 'bad'})">${r.ok ? '✓' : '✗'}</span> ${esc(r.detail)} <small>${r.ms} ms</small>`;
+}
+A.srcTest = (b) => act(b, () => runSrc(b.dataset.id));
+A.srcTestAll = (b) => act(b, async () => {
+  const ids = (ui.sources || []).filter((c) => !c.key || c.configured).map((c) => c.id);
+  await pool(ids, 3, runSrc);
+  const bad = ids.filter((i) => SRC_STATE[i] && !SRC_STATE[i].ok).length;
+  toast(bad ? `${ids.length - bad} working, ${bad} not` : 'Everything checked out', 3500);
+});
 A.testAI = (btn) => act(btn, async () => {
   const el = $('#aiTest'); el.textContent = 'Testing…';
   const r = await api('ai-test');
