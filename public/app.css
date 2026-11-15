@@ -473,3 +473,22 @@ td .alts .chip{font-size:11.5px;padding:2px 8px;max-width:100%;overflow:hidden;t
 .nav .badge.soft{background:#ffffff1c;color:var(--sink2)}
 @media(max-width:1100px){.nh{display:none}.ng{margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #ffffff12}}
 @media(max-width:1100px){.nav a{justify-content:center;padding:8px 0}.nav .badge.soft{display:none}}
+
+/* collapsible nav groups */
+.nh{display:flex;align-items:center;width:100%;background:none;border:0;cursor:pointer;font:inherit;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--sink);opacity:.7;font-weight:800;padding:6px 10px 3px;text-align:left}
+.nh:hover{opacity:1}.nh span{flex:1}
+.nh .chev{width:12px;height:12px;transition:transform .15s}
+.ng.c .nh .chev{transform:rotate(-90deg)}
+.ng.c .ni{display:none}
+.ni{display:flex;flex-direction:column;gap:1px}
+@media(max-width:1100px){.ng.c .ni{display:flex}.nh{display:none}}
+/* stars */
+.star{background:none;border:0;cursor:pointer;color:var(--mut);font-size:16px;line-height:1;padding:2px 4px;margin-right:2px;border-radius:6px}
+.star:hover{color:#e3a008}.star.on{color:#e3a008}.star.lg{font-size:22px}
+.tri-site{font-size:12px;text-align:right}
+/* tools */
+.tools-list{display:flex;flex-direction:column;margin-top:8px}
+.tool{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.tool:first-child{border-top:0}.tool>div{flex:1;min-width:0}
+.tool .btn{flex:0 0 auto}
+@media(min-width:821px){.tabs{display:none}}

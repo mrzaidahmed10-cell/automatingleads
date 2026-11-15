@@ -8,7 +8,7 @@ import { cfg } from '../../lib/audit.js';
 import { draftEmail, draftReply, runAgent, testAI } from '../../lib/ai.js';
 import { sendEmail, emailReady, renderEmail } from '../../lib/email.js';
 
-const EDITABLE = ['name', 'email', 'website', 'phone', 'notes', 'status', 'category', 'address', 'draft'];
+const EDITABLE = ['starred', 'name', 'email', 'website', 'phone', 'notes', 'status', 'category', 'address', 'draft'];
 const STATUSES = ['new', 'drafted', 'sent', 'replied', 'unsub', 'skip'];
 
 const newLead = (o) => ({
@@ -73,6 +73,8 @@ export async function onRequest({ request, env, params }) {
       if (c.key && !env[c.key]) return json({ ok: false, ms: 0, detail: `Add ${c.key} in Cloudflare first` });
       return json(await testSource(env, c.id));
     }
+    if (a === 'blocked' && m === 'GET') return json({ list: (await loadDB(env)).blocked });
+    if (a === 'blocked' && m === 'POST') return await editBlocked(env, body);
     if (a === 'suppress' && m === 'GET') return json({ list: (await loadDB(env)).suppress });
     if (a === 'suppress' && m === 'POST') return await editSuppress(env, body);
     if (a === 'leads-bulk' && m === 'POST') return await bulkLeads(env, body);
@@ -105,6 +107,8 @@ export async function onRequest({ request, env, params }) {
 /* ---------------- shared helpers ---------------- */
 // Likeliest to be reachable and worth a pitch first, so a small count still gets the best ones.
 const quality = (i) => (i.phone ? 2 : 0) + (i.reviews > 0 ? 1 : 0) + (i.rating >= 4 ? 0.5 : 0) + (i.email ? 2 : 0) + (i.source === 'serper' || i.source === 'google' ? 1 : 0);
+// A business you blocked never comes back from a search: matched by its id or by a normalised name.
+const bizKey = (n) => String(n || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
 const clampLimit = (v) => Math.min(Math.max(Math.round(Number(v)) || 20, 1), 100);
 
 function mergeFound(db, items, limit = Infinity) {
@@ -113,13 +117,14 @@ function mergeFound(db, items, limit = Infinity) {
     hidden = 0;
   const ids = [];
   const gone = new Set(db.dismissed || []);
+  const bIds = new Set(db.blocked.map((b) => b.id).filter(Boolean)), bNames = new Set(db.blocked.map((b) => b.key));
   for (const f of [...items].sort((a, b) => quality(b) - quality(a))) {
     if (added >= limit) break;
     if (db.leads[f.id]) {
       dupes++;
       continue;
     }
-    if (gone.has(f.id)) {
+    if (gone.has(f.id) || bIds.has(f.id) || bNames.has(bizKey(f.name))) {
       hidden++; // deleted earlier with "don't bring back"
       continue;
     }
@@ -161,6 +166,7 @@ async function state(env) {
     templates: db.templates,
     sentToday: db.sent[today()] || 0,
     suppressed: db.suppress.length,
+    blocked: db.blocked.length,
     configured: { groq: !!env.GROQ_API_KEY, email: emailReady(env), places: !!env.GOOGLE_PLACES_KEY, search: !!(env.BRAVE_API_KEY || env.SERPER_API_KEY || env.TAVILY_API_KEY), serper: !!env.SERPER_API_KEY, tavily: !!env.TAVILY_API_KEY },
     security: { weakPassword: String(env.DASH_PASSWORD || '').length < 12, separateSecret: !!env.SESSION_SECRET },
   });
@@ -232,7 +238,8 @@ async function patchLead(env, id, p) {
 function applyPatch(db, lead, p) {
   for (const k of EDITABLE) {
     if (!(k in p)) continue;
-    if (k === 'email') {
+    if (k === 'starred') lead.starred = !!p.starred;
+    else if (k === 'email') {
       const e = cleanEmail(p.email);
       if (e && !isEmail(e)) throw new Error(`"${cap(p.email, 60)}" doesn't look like an email address.`);
       const old = lead.email;
@@ -306,6 +313,30 @@ async function editSuppress(env, p) {
   return json({ list: db.suppress });
 }
 
+// Block businesses: they leave your list and are never suggested again. Remove a block to allow them back.
+async function editBlocked(env, p) {
+  const db = await loadDB(env);
+  if (p.remove) {
+    db.blocked = db.blocked.filter((b) => b.key !== String(p.remove));
+    await saveDB(env, db);
+    return json({ list: db.blocked });
+  }
+  const ids = [...new Set((Array.isArray(p.ids) ? p.ids : []).map(String))].slice(0, 500);
+  const removed = [];
+  for (const id of ids) {
+    const l = db.leads[id];
+    if (!l) continue;
+    const key = bizKey(l.name);
+    if (key && !db.blocked.some((b) => b.key === key)) db.blocked.push({ key, id: l.source === 'osm' || l.source === 'google' || l.source === 'serper' ? l.id : '', name: l.name, address: l.address || '', at: Date.now() });
+    removed.push(l);
+    delete db.leads[id];
+  }
+  db.blocked = db.blocked.slice(-2000);
+  await saveDB(env, db);
+  if (removed.length) await env.LEADS.put('trash', JSON.stringify({ at: Date.now(), leads: removed, blockKeys: removed.map((l) => bizKey(l.name)) }), { expirationTtl: 3600 });
+  return json({ blocked: removed.length, list: db.blocked });
+}
+
 async function undoDelete(env) {
   const raw = await env.LEADS.get('trash');
   if (!raw) throw new Error('Nothing to undo. Undo only lasts an hour.');
@@ -318,6 +349,7 @@ async function undoDelete(env) {
     restored++;
   }
   if (db.dismissed) db.dismissed = db.dismissed.filter((d) => !db.leads[d]);
+  if (trash.blockKeys?.length) db.blocked = db.blocked.filter((b) => !trash.blockKeys.includes(b.key));
   await saveDB(env, db);
   if (env.LEADS.delete) await env.LEADS.delete('trash');
   else await env.LEADS.put('trash', '');

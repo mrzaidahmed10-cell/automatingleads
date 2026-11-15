@@ -1,11 +1,11 @@
 'use strict';
 /* ---------- leads page ---------- */
-const FILTERS = [['all', 'All'], ['hot', 'Hot'], ['unver', 'Unchecked'], ['email', 'Has email'], ['noemail', 'Needs email'], ['nosite', 'No website'], ['poor', 'Poor site'], ['drafted', 'Drafted'], ['sent', 'Sent'], ['replied', 'Replied']];
+const FILTERS = [['all', 'All'], ['starred', 'Starred'], ['hot', 'Hot'], ['unver', 'Unchecked'], ['email', 'Has email'], ['noemail', 'Needs email'], ['nosite', 'No website'], ['poor', 'Poor site'], ['drafted', 'Drafted'], ['sent', 'Sent'], ['replied', 'Replied']];
 // Worth pitching: not contacted yet, and either confirmed to have no real website or a poor one
 const isHot = (l) => ['new', 'drafted'].includes(l.status) && ((!l.website && !!l.web && ['none', 'social'].includes(l.web.status)) || (!!l.website && !!l.audit && !l.audit.unverified && l.audit.score >= 40));
 let busyBulk = false;
 const SORTS = {
-  smart: (a, b) => (isHot(b) ? 1 : 0) - (isHot(a) ? 1 : 0) || (validEmail(b.email) ? 1 : 0) - (validEmail(a.email) ? 1 : 0),
+  smart: (a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0) || (isHot(b) ? 1 : 0) - (isHot(a) ? 1 : 0) || (validEmail(b.email) ? 1 : 0) - (validEmail(a.email) ? 1 : 0),
   new: (a, b) => b.createdAt - a.createdAt,
   name: (a, b) => a.name.localeCompare(b.name),
   poor: (a, b) => (b.audit ? b.audit.score : -1) - (a.audit ? a.audit.score : -1),
@@ -14,6 +14,7 @@ const SORTS = {
 
 function leadMatches(l, f) {
   switch (f) {
+    case 'starred': return !!l.starred;
     case 'email': return validEmail(l.email);
     case 'noemail': return !validEmail(l.email) && !['unsub', 'skip'].includes(l.status);
     case 'hot': return isHot(l);
@@ -64,18 +65,15 @@ const numVal = (id, def, min, max) => { const e = document.getElementById(id); c
 const stepBy = (id, dir) => { const e = document.getElementById(id); if (!e) return; const min = +e.dataset.min, max = +e.dataset.max; const v = numVal(id, min, min, max); e.value = Math.min(max, Math.max(min, dir > 0 ? Math.floor(v / 5) * 5 + 5 : Math.ceil(v / 5) * 5 - 5)); };
 A.stepUp = (t) => stepBy(t.dataset.t, 1);
 A.stepDn = (t) => stepBy(t.dataset.t, -1);
-function vLeads() {
-  const open = ui.finderOpen ?? S.leads.length === 0;
+function vFind() {
   const opt = (v, t, sel) => `<option value="${v}" ${sel ? 'selected' : ''}>${t}</option>`;
   $('#view').innerHTML = `
     <div class="card pad" id="finder">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <div><h3>Find leads</h3><div class="hint">Local businesses near a city. The best leads have no website or an outdated one.</div></div>
         <div class="sp"></div>
-        <button class="btn s" data-act="toggleFinder">${open ? 'Hide' : 'Show finder'}</button>
-        <button class="btn s" data-act="addLeadModal">+ Add lead</button>
       </div>
-      <div id="finderBody" class="${open ? '' : 'hide'}" style="margin-top:14px">
+      <div id="finderBody" style="margin-top:14px">
         <div class="row">
           <div style="flex:2"><label>City</label><input id="fCity" value="${esc(store.get('city', 'Iowa City, Iowa'))}" placeholder="City, State"></div>
           <div><label>Category</label><select id="fCat">${[['all', 'Everything'], ['restaurants', 'Food & drink'], ['beauty', 'Salons & beauty'], ['auto', 'Auto'], ['fitness', 'Fitness'], ['trades', 'Trades & crafts'], ['health', 'Health & vet'], ['retail', 'Retail'], ['offices', 'Offices']].map(([v, t]) => opt(v, t, store.get('cat', 'all') === v)).join('')}</select></div>
@@ -89,6 +87,12 @@ function vLeads() {
       </div>
       <div id="findres"></div>
     </div>
+    <div class="card" style="margin-top:16px" id="triage"></div>`;
+  mountMode(); renderFindRes(); renderTriage();
+}
+
+function vLeads() {
+  $('#view').innerHTML = `
     <div class="card" style="margin-top:16px">
       <div class="tools"><div class="chips" id="chips"></div><div class="sp"></div><div id="qMount" class="qm"></div></div>
       <div class="tools">
@@ -96,19 +100,15 @@ function vLeads() {
         <select id="sortSel" class="qsel" data-change="sortBy" aria-label="Sort leads">${[['smart', 'Best leads first'], ['new', 'Newest'], ['name', 'Name A–Z'], ['poor', 'Weakest site first'], ['rating', 'Most reviews']].map(([v, t]) => `<option value="${v}" ${(ui.sort || 'smart') === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
         <span id="selbar" class="selbar hide" role="group" aria-label="Selection"></span>
         <div class="sp"></div>
+        <button class="btn s" data-act="addLeadModal">+ Add lead</button>
         <button class="btn s g" data-act="exportCsv" title="Download your selection (or the current filter) as a spreadsheet">Export CSV</button>
-        <button class="btn s" data-act="bulkVerify" title="Look for a website for every lead that has none listed">${ico('shield')} Verify websites</button>
-        <button class="btn s" data-act="bulkContacts" title="Look up email, phone and social pages for leads that still need them (uses your selection if you picked some)">${ico('mail')} Find contacts</button>
-        <button class="btn s" data-act="bulkAudit">Audit sites</button>
-        <button class="btn s" data-act="bulkDraft" title="Write a draft for every new lead that has an email">Draft all</button>
-        <button class="btn s p" data-act="bulkSend">${ico('send')} Send drafted</button>
         <span class="hint" id="prog"></span>
       </div>
       <div class="tw"><table class="rt"><thead><tr><th class="ck"><input type="checkbox" id="selAll" data-act="selAll" aria-label="Select all shown"></th><th>Business</th><th>Website</th><th>Email</th><th>Status</th><th class="dl"></th></tr></thead><tbody id="tb"></tbody></table></div>
       <div class="empty hide" id="empty"></div>
     </div>`;
-  mountSearch(); mountMode();
-  renderFindRes(); renderLeadsTable();
+  mountSearch();
+  renderLeadsTable();
 }
 
 // Glisse controls when available, plain inputs if the glass bundle did not load
@@ -151,18 +151,18 @@ function renderLeadsTable() {
   const empty = $('#empty');
   if (!rows.length) {
     empty.classList.remove('hide');
-    empty.innerHTML = S.leads.length ? '<b>No leads match</b>Try a different filter or search.' : '<b>No leads yet</b>Use the finder above to search a city, or add a lead by hand.';
+    empty.innerHTML = S.leads.length ? '<b>No leads match</b>Try a different filter or search.' : '<b>No leads yet</b><a href="#/find">Find leads in a city</a> or add one by hand.';
   } else empty.classList.add('hide');
   tb.innerHTML = rows.map(rowHtml).join('');
   renderSel();
 }
 const rowHtml = (l) => `<tr class="lead ${sel().has(l.id) ? 'picked' : ''}" tabindex="0" aria-label="Open ${esc(l.name)}" data-act="openLead" data-id="${esc(l.id)}">
     <td class="ck"><input type="checkbox" class="sel" data-act="selRow" data-id="${esc(l.id)}" aria-label="Select ${esc(l.name)}" ${sel().has(l.id) ? 'checked' : ''}></td>
-    <td><div class="nm">${esc(l.name)}${isHot(l) ? ' <span class="pill acc">Hot</span>' : ''}</div><div class="sub">${esc([l.category, l.rating ? `${l.rating}★${l.reviews ? ' (' + l.reviews + ')' : ''}` : '', l.address, l.phone].filter(Boolean).join(' · '))}</div>${socialLinks(l)}</td>
+    <td><div class="nm"><button class="star ${l.starred ? 'on' : ''}" data-act="star" data-id="${esc(l.id)}" aria-pressed="${!!l.starred}" aria-label="${l.starred ? 'Unstar' : 'Star'} ${esc(l.name)}" title="${l.starred ? 'Starred' : 'Star this lead'}">${l.starred ? '★' : '☆'}</button>${esc(l.name)}${isHot(l) ? ' <span class="pill acc">Hot</span>' : ''}</div><div class="sub">${esc([l.category, l.rating ? `${l.rating}★${l.reviews ? ' (' + l.reviews + ')' : ''}` : '', l.address, l.phone].filter(Boolean).join(' · '))}</div>${socialLinks(l)}</td>
     <td>${siteCell(l)}</td>
     <td><input class="em" type="email" inputmode="email" autocapitalize="off" spellcheck="false" data-change="rowEmail" aria-label="Email for ${esc(l.name)}" data-id="${esc(l.id)}" placeholder="add email" value="${esc(l.email)}">${emailAlts(l)}</td>
     <td>${statusPill(l)}</td>
-    <td class="dl"><button class="btn s g rowdel" data-act="rowDel" data-id="${esc(l.id)}" aria-label="Delete ${esc(l.name)}" title="Delete">${ico('trash')}</button></td></tr>`;
+    <td class="dl"><button class="btn s g rowdel" data-act="rowBlock" data-id="${esc(l.id)}" aria-label="Block ${esc(l.name)}" title="Block: delete and never suggest again">${ico('ban')}</button><button class="btn s g rowdel" data-act="rowDel" data-id="${esc(l.id)}" aria-label="Delete ${esc(l.name)}" title="Delete">${ico('trash')}</button></td></tr>`;
 // Update one row in place so a save never wipes what you are typing in the next row
 function patchRow(l) {
   const tr = $(`#tb tr[data-id="${CSS.escape(l.id)}"]`);
@@ -195,7 +195,6 @@ A.exportCsv = () => {
   toast(`Exported ${ls.length} lead${ls.length === 1 ? '' : 's'}`, 2500);
 };
 A.setFilter = (t) => { ui.filter = t.dataset.f; renderLeadsTable(); };
-A.toggleFinder = (t) => { const b = $('#finderBody'); b.classList.toggle('hide'); ui.finderOpen = !b.classList.contains('hide'); t.textContent = ui.finderOpen ? 'Hide' : 'Show finder'; };
 C.rowEmail = async (i) => {
   const id = i.dataset.id, before = (S.leads.find((x) => x.id === id) || {}).email || '', v = cleanEmail(i.value);
   if (v === before) { i.value = before; return; }
@@ -224,11 +223,11 @@ A.find = (btn) => act(btn, async () => {
       ui.lastFind = { ...r, debug: { ...r.debug, place: f.place, raw: f.raw, chains: f.chains, server: 'your browser' } };
     } catch (e2) { ui.lastFind = { error: 'Search failed. Server: ' + e.message + '. Browser: ' + e2.message }; renderFindRes(); throw e2; }
   }
-  S = await api('state'); chrome(); renderFindRes(); renderLeadsTable();
+  S = await api('state'); chrome(); renderFindRes(); renderTriage();
   const ids = (ui.lastFind && ui.lastFind.ids) || [];
   if (auto && ids.length) {
     const st = await checkAndAudit(ids, pipeSay);
-    ui.lastFind.check = st; pipeSay(''); chrome(); renderFindRes(); renderLeadsTable();
+    ui.lastFind.check = st; pipeSay(''); chrome(); renderFindRes(); renderTriage();
     toast(`${ids.length} new · ${st.none + st.social} have no real website · ${st.site} had one${st.emails != null ? ' · ' + st.emails + ' emails found' : ''}`, 6500);
   } else toast(`${ui.lastFind.added} new leads added`);
 });
@@ -332,7 +331,7 @@ function drawer() {
   const tone = S.settings.tone || 'friendly';
   const STAT = { new: 'New', drafted: 'Drafted', sent: 'Sent', replied: 'Replied', unsub: 'Do not contact', skip: 'Skipped' };
   $('#ov').innerHTML = `<div class="scrim" data-act="closeBg"><div class="drawer">
-    <div class="dh"><div style="flex:1"><h2>${esc(l.name)}</h2><div class="sub">${esc([l.category, l.address, l.phone].filter(Boolean).join(' · '))}</div></div>${statusPill(l)}<button class="x" data-act="closeOv" aria-label="Close">×</button></div>
+    <div class="dh"><div style="flex:1"><h2>${esc(l.name)}</h2><div class="sub">${esc([l.category, l.address, l.phone].filter(Boolean).join(' · '))}</div></div><button class="star lg ${l.starred ? 'on' : ''}" data-act="dStar" aria-pressed="${!!l.starred}" aria-label="${l.starred ? 'Unstar' : 'Star'} this lead" title="${l.starred ? 'Starred' : 'Star this lead'}">${l.starred ? '★' : '☆'}</button>${statusPill(l)}<button class="x" data-act="closeOv" aria-label="Close">×</button></div>
 
     <div class="card sec stack"><h4>Contact <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:500">· saves automatically</span></h4>
       <div><label for="dName">Business name</label><input id="dName" data-change="saveContact" value="${esc(l.name)}"></div>
@@ -370,7 +369,7 @@ function drawer() {
 
     <div class="card sec"><h4>Pipeline</h4>
       <div class="acts"><select id="dStat" data-change="dStat" style="width:auto">${Object.entries(STAT).map(([s, t]) => `<option value="${s}" ${s === l.status ? 'selected' : ''}>${t}</option>`).join('')}</select>
-      <span class="sp"></span><button class="btn s d" data-act="dDel">Delete lead</button></div>
+      <span class="sp"></span><button class="btn s" data-act="dBlock" title="Delete and never suggest again">Block business</button><button class="btn s d" data-act="dDel">Delete lead</button></div>
     </div>
   </div></div>`;
   $('.drawer').scrollTop = top;
@@ -471,7 +470,7 @@ function renderSel() {
   bar.classList.toggle('hide', !n);
   const hidden = n - inView;
   bar.innerHTML = n ? `<b>${n}</b> selected${hidden > 0 ? ` <span class="hint">(${hidden} hidden by the filter)</span>` : ''}
-    <button class="btn s d" data-act="bulkDelAsk">${ico('trash')} Delete</button><button class="btn s g" data-act="selNone">Clear</button>` : '';
+    <button class="btn s" data-act="bulkStar">★ Star</button><button class="btn s" data-act="bulkContacts">${ico('mail')} Find contacts</button><button class="btn s" data-act="bulkBlockAsk">${ico('ban')} Block</button><button class="btn s d" data-act="bulkDelAsk">${ico('trash')} Delete</button><button class="btn s g" data-act="selNone">Clear</button>` : '';
 }
 A.selRow = (t, e) => {
   const id = t.dataset.id, rows = visibleRows().map((l) => l.id);
@@ -584,3 +583,51 @@ A.bulkVerify = (btn) => bulk(btn, async () => {
   pipeSay(''); chrome(); renderLeadsTable();
   toast(`Checked ${st.checked}: ${st.none + st.social} have no real site, ${st.site} had one`, 6000);
 });
+
+
+/* ---------- star, block, triage ---------- */
+// After a search: just the new leads, so you can star the good ones and block the ones you never want to see again
+function renderTriage() {
+  const el = $('#triage'); if (!el) return;
+  const ids = new Set((ui.lastFind && ui.lastFind.ids) || []);
+  const ls = S.leads.filter((l) => ids.has(l.id));
+  if (!ids.size) { el.innerHTML = `<div class="pad"><h3>New from this search</h3><div class="hint">Run a search and the new leads show up here, so you can star the promising ones and block the rest.</div></div>`; return; }
+  el.innerHTML = `<div class="pad" style="padding-bottom:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div><h3>New from this search</h3><div class="hint">${ls.length} lead${ls.length === 1 ? '' : 's'}. Star the good ones, block anything you never want suggested again.</div></div><div class="sp"></div><a class="btn s" href="#/leads">Open all leads</a></div>
+    <div class="list">${ls.map((l) => `<div class="li" style="display:flex;gap:8px;align-items:center"><button class="star ${l.starred ? 'on' : ''}" data-act="star" data-id="${esc(l.id)}" aria-pressed="${!!l.starred}" aria-label="${l.starred ? 'Unstar' : 'Star'} ${esc(l.name)}">${l.starred ? '★' : '☆'}</button><div style="min-width:0;flex:1"><div class="nm">${esc(l.name)}</div><div class="sub">${esc([l.category, l.address].filter(Boolean).join(' · '))}</div></div><div class="tri-site">${siteCell(l)}</div><button class="btn s g" data-act="rowBlock" data-id="${esc(l.id)}" aria-label="Block ${esc(l.name)}" title="Block">${ico('ban')}</button></div>`).join('')}</div>`;
+}
+const redrawLeads = () => { chrome(); if ($('#tb')) renderLeadsTable(); if ($('#triage')) renderTriage(); if ($('.drawer')) drawer(); };
+async function setStar(ids, on) {
+  const had = S.leads.filter((l) => ids.includes(l.id)).map((l) => [l, !!l.starred]);
+  had.forEach(([l]) => (l.starred = on)); redrawLeads();
+  try { await Promise.all(ids.map((id) => api('leads/' + id, { method: 'PATCH', body: { starred: on } }))); }
+  catch (e) { had.forEach(([l, was]) => (l.starred = was)); redrawLeads(); throw e; }
+}
+A.star = (t, e) => { e && e.stopPropagation(); const l = S.leads.find((x) => x.id === t.dataset.id); if (l) setStar([l.id], !l.starred).catch((er) => toast(er.message, 4500)); };
+A.bulkStar = () => {
+  const ls = S.leads.filter((l) => sel().has(l.id)); if (!ls.length) return;
+  const on = ls.some((l) => !l.starred);
+  setStar(ls.map((l) => l.id), on).then(() => toast(`${on ? 'Starred' : 'Unstarred'} ${ls.length}`)).catch((er) => toast(er.message, 4500));
+};
+A.dStar = () => { const l = curLead(); if (l) setStar([l.id], !l.starred).catch((er) => toast(er.message, 4500)); };
+async function blockLeads(ids) {
+  const removed = S.leads.filter((l) => ids.includes(l.id));
+  await api('blocked', { method: 'POST', body: { ids } });
+  const gone = new Set(ids); S.leads = S.leads.filter((l) => !gone.has(l.id)); ids.forEach((id) => sel().delete(id)); S.blocked = (S.blocked || 0) + removed.length;
+  redrawLeads();
+  toastAct(`Blocked ${removed.length} business${removed.length === 1 ? '' : 'es'}. They will not be suggested again`, 'Undo', async () => {
+    await api('leads-undo', { method: 'POST', body: {} });
+    S = await api('state'); redrawLeads(); toast('Block undone');
+  }, 12000);
+}
+A.rowBlock = (t, e) => { e && e.stopPropagation(); blockLeads([t.dataset.id]).catch((er) => toast(er.message, 4500)); };
+A.bulkBlockAsk = () => {
+  const ls = S.leads.filter((l) => sel().has(l.id)); if (!ls.length) return;
+  const sent = ls.filter(contacted).length;
+  $('#ov').innerHTML = `<div class="scrim c" data-act="closeBg"><div class="card modal stack">
+    <div class="dh"><h2>Block ${ls.length} business${ls.length === 1 ? '' : 'es'}?</h2><div class="sp"></div><button class="x" data-act="closeOv" aria-label="Close">×</button></div>
+    <div class="hint">They leave your list and future searches will never suggest them. You can allow any of them back from Blocklist.</div>
+    ${sent ? `<div class="banner" style="margin:0"><b>${sent}</b> of these ${sent === 1 ? 'was' : 'were'} already emailed. Their history goes with them.</div>` : ''}
+    <div class="acts"><button class="btn d" data-act="bulkBlockGo">${ico('ban')} Block ${ls.length}</button><button class="btn" data-act="closeOv">Cancel</button></div></div></div>`;
+};
+A.bulkBlockGo = (btn) => act(btn, async () => { const ids = [...sel()]; closeOv(); await blockLeads(ids); });
+A.dBlock = async () => { const l = curLead(); if (!l) return; closeOv(); await blockLeads([l.id]).catch((er) => toast(er.message, 4500)); };

@@ -40,6 +40,9 @@ const IC = {
   out: '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
   shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
+  wrench: '<path d="M14.7 6.3a4 4 0 005.2 5.2L21 12.6 12.6 21 3 11.4l8.4-8.4z"/>',
+  star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   reply: '<path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 00-4-4H4"/>',
 };
 const ico = (k) => `<svg class="i" viewBox="0 0 24 24">${IC[k] || ''}</svg>`;
@@ -134,33 +137,28 @@ const ROUTES = {
   dashboard: ['Overview', () => vDash(), 'home'],
   leads: ['Leads', () => vLeads(), 'users'],
   replies: ['Inbox', () => vReplies(), 'mail'],
+  find: ['Find leads', () => vFind(), 'search'],
+  analytics: ['Analytics', () => vAnalytics(), 'chart'],
+  tools: ['Tools', () => vTools(), 'wrench'],
   templates: ['Templates', () => vTemplates(), 'edit'],
-  dnc: ['Do not contact', () => vDnc(), 'shield'],
+  blocklist: ['Blocklist', () => vBlocklist(), 'shield'],
   settings: ['Settings', () => vSettings(), 'gear'],
 };
-const ALIAS = { analytics: 'dashboard', assistant: 'dashboard' }; // old links still land somewhere sensible
+const ALIAS = { assistant: 'dashboard', dnc: 'blocklist' }; // old links still land somewhere sensible
 // Desktop sidebar: grouped and complete. `m` marks the essentials that also show in the phone tab bar.
 const NAV = [
   ['Overview', [['Overview', 'home', 'dashboard', '', 1]]],
   ['Outreach', [
-    ['Find leads', 'search', 'leads', 'find=1'],
+    ['Find leads', 'search', 'find', ''],
     ['All leads', 'users', 'leads', '', 1],
-    ['Hot leads', 'spark', 'leads', 'f=hot'],
-    ['Needs email', 'mail', 'leads', 'f=noemail'],
-    ['Drafted', 'edit', 'leads', 'f=drafted'],
-    ['Sent', 'send', 'leads', 'f=sent'],
+    ['Starred', 'star', 'leads', 'f=starred'],
   ]],
-  ['Conversations', [
-    ['Inbox', 'reply', 'replies', '', 1],
-    ['Follow-ups due', 'mail', 'replies', 'f=due'],
-  ]],
-  ['Insights', [
-    ['Analytics', 'chart', 'dashboard', 'ins=1'],
-    ['Assistant', 'spark', 'assistant', ''],
-  ]],
-  ['Library', [
+  ['Conversations', [['Inbox', 'reply', 'replies', '', 1]]],
+  ['Insights', [['Analytics', 'chart', 'analytics', '']]],
+  ['Workshop', [
+    ['Tools', 'wrench', 'tools', ''],
     ['Templates', 'edit', 'templates', ''],
-    ['Do not contact', 'shield', 'dnc', ''],
+    ['Blocklist', 'shield', 'blocklist', ''],
   ]],
   ['Settings', [
     ['Profile & voice', 'gear', 'settings', 't=profile', 1],
@@ -175,10 +173,10 @@ const page = () => { const r = rawKey(), k = ALIAS[r] || r; return ROUTES[k] ? k
 function applyParams() {
   const [k, q] = hashParts();
   const f = q.get('f');
-  if (k === 'leads') { if (f) { ui.filter = f; ui.query = ''; } if (q.get('find')) ui.finderOpen = true; else if (f) ui.finderOpen = false; }
+  if (k === 'leads' && q.get('find')) { history.replaceState(null, '', '#/find'); return; }
+  if (k === 'leads' && f) { ui.filter = f; ui.query = ''; }
   if (k === 'replies' && f) ui.replyFilter = f;
   if (k === 'settings' && q.get('t')) ui.setTab = q.get('t');
-  if (k === 'analytics' || q.get('ins')) store.set('ins', '1');
 }
 function route() {
   if (rawKey() === 'assistant') { history.replaceState(null, '', '#/dashboard'); setTimeout(() => openAssist(true), 0); }
@@ -195,14 +193,22 @@ route.n = 0;
 window.addEventListener('hashchange', route);
 function go(to, extra) { if (extra) Object.assign(ui, extra); if (location.hash === '#/' + to) route(); else location.hash = '#/' + to; }
 const navHref = (pg, q) => '#/' + pg + (q ? '?' + q : '');
+const navShut = () => new Set(store.get('navc', []));
+A.navGrp = (t) => { const g = t.dataset.g, c = navShut(); c.has(g) ? c.delete(g) : c.add(g); store.set('navc', [...c]); chrome(); };
 function chrome() {
   const k = page(), L = S.leads, [rk, rq] = hashParts();
-  const cnt = { replied: L.filter((l) => l.status === 'replied').length, hot: 0, noemail: 0, drafted: 0, sent: 0, due: 0, dnc: S.suppressed || 0 };
-  if (window.leadMatches) for (const f of ['hot', 'noemail', 'drafted', 'sent']) cnt[f] = L.filter((l) => leadMatches(l, f)).length;
-  if (typeof dueFollowup === 'function') cnt.due = L.filter(dueFollowup).length;
-  const badge = (pg, q) => (pg === 'replies' && !q ? cnt.replied : pg === 'replies' ? cnt.due : pg === 'dnc' ? cnt.dnc : pg === 'leads' && /^f=/.test(q) ? cnt[q.slice(2)] : pg === 'leads' && !q ? L.length : 0) || 0;
-  const on = (pg, q) => { const same = (ALIAS[rk] || rk) === pg || rk === pg; if (!same) return false; const want = new URLSearchParams(q); const key = [...want.keys()][0]; return key ? rq.get(key) === want.get(key) : ![...rq.keys()].some((x) => ['f', 'find', 't', 'ins'].includes(x)); };
-  $('#nav').innerHTML = NAV.map(([grp, items]) => `<div class="ng" role="group" aria-label="${grp}"><div class="nh">${grp}</div>${items.map(([label, ic, pg, q]) => { const b = badge(pg, q); const a = on(pg, q); return `<a href="${navHref(pg, q)}" class="${a ? 'on' : ''}" ${a ? 'aria-current="page"' : ''} title="${label}">${ico(ic)}<span class="t">${label}</span>${b ? `<span class="badge${pg === 'replies' && !q ? '' : ' soft'}">${b}</span>` : ''}</a>`; }).join('')}</div>`).join('');
+  const cnt = { replied: L.filter((l) => l.status === 'replied').length, starred: L.filter((l) => l.starred).length, blocked: (S.suppressed || 0) + (S.blocked || 0) };
+  const badge = (pg, q) => (pg === 'replies' ? cnt.replied : pg === 'blocklist' ? cnt.blocked : pg === 'leads' && q === 'f=starred' ? cnt.starred : pg === 'leads' && !q ? L.length : 0) || 0;
+  const on = (pg, q) => { if ((ALIAS[rk] || rk) !== pg) return false; const want = new URLSearchParams(q); const key = [...want.keys()][0]; return key ? rq.get(key) === want.get(key) : ![...rq.keys()].some((x) => ['f', 't'].includes(x)); };
+  const shut = navShut();
+  $('#nav').innerHTML = NAV.map(([grp, items]) => {
+    const single = items.length === 1 && grp === items[0][0];
+    const hasOn = items.some(([, , pg, q]) => on(pg, q));
+    const open = single || hasOn || !shut.has(grp);
+    const links = items.map(([label, ic, pg, q]) => { const b = badge(pg, q), a = on(pg, q); return `<a href="${navHref(pg, q)}" class="${a ? 'on' : ''}" ${a ? 'aria-current="page"' : ''} title="${label}">${ico(ic)}<span class="t">${label}</span>${b ? `<span class="badge${pg === 'replies' ? '' : ' soft'}">${b}</span>` : ''}</a>`; }).join('');
+    if (single) return `<div class="ng" role="group" aria-label="${grp}">${links}</div>`;
+    return `<div class="ng ${open ? '' : 'c'}" role="group" aria-label="${grp}"><button class="nh" type="button" data-act="navGrp" data-g="${grp}" aria-expanded="${open}"><span>${grp}</span><svg class="i chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><div class="ni">${links}</div></div>`;
+  }).join('');
   const tabs = [['Overview', 'home', 'dashboard', ''], ['Leads', 'users', 'leads', ''], ['Inbox', 'reply', 'replies', ''], ['Settings', 'gear', 'settings', '']];
   const tk = ALIAS[rk] || rk;
   const tabOn = (pg) => (pg === tk) || (pg === 'leads' && false);
@@ -219,7 +225,7 @@ function refreshUI() {
   chrome();
   const k = page();
   if (k === 'dashboard') vDash();
-  else if (k === 'leads') renderLeadsTable(); else if (k === 'replies') renderReplyList(); else if (k === 'dnc') vDnc();
+  else if (k === 'leads') renderLeadsTable(); else if (k === 'replies') renderReplyList(); else if (k === 'blocklist') vBlocklist();
 }
 async function boot() {
   try { S = await api('state'); } catch (e) {
@@ -235,7 +241,6 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest('[data-act]');
   if (t && A[t.dataset.act]) A[t.dataset.act](t, e);
 });
-document.addEventListener('toggle', (e) => { if (e.target.id === 'insights') store.set('ins', e.target.open ? '1' : '0'); }, true);
 document.addEventListener('change', (e) => {
   const t = e.target.closest('[data-change]');
   if (t && C[t.dataset.change]) C[t.dataset.change](t, e);
@@ -324,10 +329,10 @@ function vDash() {
     ['Add your name', !!s.senderName, 'settings'],
     ['Connect email sending', !!S.configured.email, 'settings'],
     ['Connect the AI writer (Groq)', !!S.configured.groq, 'settings'],
-    ['Find your first leads', L.length > 0, 'leads'],
+    ['Find your first leads', L.length > 0, 'find'],
   ];
   const todos = [];
-  if (!L.length) todos.push({ n: '+', t: 'Find your first leads', d: 'Search a city for businesses with no website', to: 'leads' });
+  if (!L.length) todos.push({ n: '+', t: 'Find your first leads', d: 'Search a city for businesses with no website', to: 'find' });
   const needEmail = L.filter((l) => !validEmail(l.email) && !['unsub', 'skip'].includes(l.status));
   const unaud = needEmail.filter((l) => l.website && !l.audit).length;
   if (rep) todos.push({ n: rep, t: `${rep} ${rep === 1 ? 'reply' : 'replies'} waiting`, d: 'Respond while they are warm', to: 'replies', rf: 'replied' });
@@ -367,14 +372,13 @@ function vDash() {
       <div><b>${cont}</b><span>Emailed</span><small>${S.sentToday}${lim ? ' / ' + lim : ''} today</small></div>
       <div><b>${rep}</b><span>Replies</span><small>${cont ? Math.round((rep / cont) * 100) + '% rate' : 'none yet'}</small></div>
       <div><b>${n((l) => l.status === 'drafted')}</b><span>Drafts</span><small>${due} follow-ups due</small></div>
-      <div><b>${S.suppressed}</b><span>Do not contact</span><small>never emailed</small></div>
+      <div><b>${n((l) => l.starred)}</b><span>Starred</span><small>${(S.suppressed || 0) + (S.blocked || 0)} blocked</small></div>
     </div>
     ${todos.length ? `<div class="grid g2 tight">${todos.slice(0, 4).map((t) => `<button class="todo" data-act="go" data-to="${t.to}" ${t.filter ? `data-filter="${t.filter}"` : ''} ${t.rf ? `data-rf="${t.rf}"` : ''}><div class="n">${esc(t.n)}</div><div><b>${esc(t.t)}</b><span>${esc(t.d)}</span></div></button>`).join('')}</div>` : ''}
     <div class="grid g2 tight">
-      <div class="card pad"><h3>Last 14 days</h3>${lineChart(act14.labels, [{ name: 'Leads found', color: 'var(--c1)', values: act14.found }, { name: 'Emails sent', color: 'var(--c2)', values: act14.sent }, { name: 'Replies', color: 'var(--c4)', values: act14.replied }], 170)}</div>
+      <div class="card pad"><div style="display:flex;align-items:center;gap:8px"><h3>Starred leads</h3><span class="sp"></span><a class="hint" href="#/leads?f=starred">${n((l) => l.starred)} total</a></div>${starredList(L)}</div>
       <div class="card pad"><h3>Pipeline</h3>${hbars(funnel)}<div class="feed" style="margin-top:8px">${ev.slice(0, 3).map((e) => `<div><span class="dt">${ico(e.k === 'reply' ? 'reply' : 'send')}</span><span>${e.x}</span><time>${ago(e.t)}</time></div>`).join('') || '<div class="hint">Emails and replies will show up here.</div>'}</div></div>
-    </div>
-    <details class="card ins" id="insights" ${store.get('ins', '0') === '1' ? 'open' : ''}><summary><b>Insights</b><span class="hint">reply rates by lead type, daily sends, categories</span></summary><div class="insb">${analyticsHtml()}</div></details>`;
+    </div>`;
 }
 
 /* ---------- analytics ---------- */
@@ -522,22 +526,39 @@ A.signOut = () => $('#bOut').click();
 
 
 /* ---------- library pages ---------- */
+function starredList(L) {
+  const ls = L.filter((l) => l.starred).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 5);
+  if (!ls.length) return '<div class="hint" style="margin-top:8px">Star your best leads (the ☆ next to a name) and they collect here.</div>';
+  return `<div class="list" style="margin-top:6px">${ls.map((l) => `<a class="li" href="#/leads?f=starred" style="display:flex;gap:8px;align-items:center;text-decoration:none;color:inherit"><span class="star on" aria-hidden="true">★</span><span class="nm" style="flex:1">${esc(l.name)}</span><span class="sub">${esc(l.status === 'new' ? (validEmail(l.email) ? 'has email' : 'needs email') : l.status)}</span></a>`).join('')}</div>`;
+}
+function vAnalytics() {
+  $('#view').innerHTML = L_EMPTY() ? '<div class="card pad"><h3>Nothing to analyse yet</h3><div class="hint">Find some leads and send a few emails, then reply rates and trends show up here.</div></div>' : `<div class="insb">${analyticsHtml()}</div>`;
+}
+const L_EMPTY = () => !S.leads.length;
+
+let BL = null;
+async function vBlocklist() {
+  $('#view').innerHTML = `<div class="grid g2">
+    <div class="card pad"><h3>Blocked businesses</h3><div class="hint">Never suggested by a search again. Block a business from its row or detail panel in Leads or Find leads.</div>
+      <div class="list" id="blBiz" style="margin-top:12px"><div class="empty">Loading…</div></div></div>
+    <div class="card pad"><h3>Do not email</h3><div class="hint">Addresses FlightLine will never send to. A reply of "unsubscribe" adds one automatically.</div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><input class="in" id="dncIn" type="email" placeholder="name@business.com" style="flex:1;min-width:180px" aria-label="Email to block"><button class="btn p" data-act="dncAdd">Add</button></div>
+      <div class="list" id="dncList" style="margin-top:12px"><div class="empty">Loading…</div></div></div></div>`;
+  try { const [a, b] = await Promise.all([api('blocked'), api('suppress')]); BL = { biz: a.list, em: b.list }; } catch (e) { toast(e.message, 4000); BL = BL || { biz: [], em: [] }; }
+  blDraw();
+}
+function blDraw() {
+  const b = $('#blBiz'), e = $('#dncList'); if (!b || !e) return;
+  b.innerHTML = BL.biz.length ? BL.biz.map((x) => `<div class="li" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><div class="nm">${esc(x.name)}</div><div class="sub">${esc(x.address || '')}</div></div><button class="btn s" data-act="blDel" data-k="${esc(x.key)}">Allow again</button></div>`).join('') : '<div class="empty">No blocked businesses.</div>';
+  e.innerHTML = BL.em.length ? BL.em.map((m) => `<div class="li" style="display:flex;align-items:center;gap:8px"><span class="nm" style="flex:1">${esc(m)}</span><button class="btn s" data-act="dncDel" data-e="${esc(m)}">Remove</button></div>`).join('') : '<div class="empty">Nobody is blocked.</div>';
+  S.suppressed = BL.em.length; S.blocked = BL.biz.length; chrome();
+}
+A.dncAdd = async () => { try { BL.em = (await api('suppress', { method: 'POST', body: { email: $('#dncIn').value } })).list; $('#dncIn').value = ''; blDraw(); } catch (e) { toast(e.message, 4000); } };
+A.dncDel = async (t) => { try { BL.em = (await api('suppress', { method: 'POST', body: { email: t.dataset.e, remove: true } })).list; blDraw(); } catch (e) { toast(e.message, 4000); } };
+A.blDel = async (t) => { try { BL.biz = (await api('blocked', { method: 'POST', body: { remove: t.dataset.k } })).list; blDraw(); } catch (e) { toast(e.message, 4000); } };
+
 function vTemplates() {
   const n = (S.templates || []).length;
   $('#view').innerHTML = `<div class="card pad"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div><h3>Quick-reply templates</h3><div class="hint">Short answers you reuse in the Inbox. ${n} saved.</div></div><div class="sp"></div><button class="btn p" data-act="tplEdit">Edit templates</button></div>
     <div class="list" style="margin-top:12px">${(S.templates || []).map((t) => `<div class="li"><div class="nm">${esc(t.name || 'Template')}</div><div class="sub" style="white-space:pre-wrap">${esc(String(t.body || '').slice(0, 280))}</div></div>`).join('') || '<div class="empty">No templates yet.</div>'}</div></div>`;
 }
-let DNC = null;
-async function vDnc() {
-  $('#view').innerHTML = `<div class="card pad"><h3>Do not contact</h3><div class="hint">FlightLine will never email these addresses. Replying "unsubscribe" adds one automatically.</div>
-    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><input class="in" id="dncIn" type="email" placeholder="name@business.com" style="flex:1;min-width:200px" aria-label="Email to block"><button class="btn p" data-act="dncAdd">Add</button></div>
-    <div class="list" id="dncList" style="margin-top:12px"><div class="empty">Loading…</div></div></div>`;
-  try { DNC = (await api('suppress')).list; } catch (e) { toast(e.message, 4000); DNC = DNC || []; }
-  dncDraw();
-}
-function dncDraw() {
-  const el = $('#dncList'); if (!el) return;
-  el.innerHTML = DNC.length ? DNC.map((e) => `<div class="li" style="display:flex;align-items:center;gap:8px"><span class="nm">${esc(e)}</span><span class="sp"></span><button class="btn s" data-act="dncDel" data-e="${esc(e)}">Remove</button></div>`).join('') : '<div class="empty">Nobody is blocked.</div>';
-}
-A.dncAdd = async () => { const v = $('#dncIn').value; try { DNC = (await api('suppress', { method: 'POST', body: { email: v } })).list; S.suppressed = DNC.length; $('#dncIn').value = ''; dncDraw(); chrome(); } catch (e) { toast(e.message, 4000); } };
-A.dncDel = async (t) => { try { DNC = (await api('suppress', { method: 'POST', body: { email: t.dataset.e, remove: true } })).list; S.suppressed = DNC.length; dncDraw(); chrome(); } catch (e) { toast(e.message, 4000); } };

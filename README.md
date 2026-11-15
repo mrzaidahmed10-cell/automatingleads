@@ -84,5 +84,6 @@ With no keys at all it still works: OpenStreetMap for businesses, then DuckDuckG
 
 - **How many leads** (steps of 5, or type any number 1-100) and **Distance in miles** are in the finder. Smaller counts use fewer search/API calls, which saves your free quotas.
 - **Groq as a second opinion.** When normal checks can't decide whether a business has a website, Groq picks from the real search results (it can't invent a URL, and the page must still load and mention the business). Set `AI_LEADS=off` in Cloudflare to turn this off.
-- **Sidebar** is grouped (Outreach, Conversations, Insights, Library, Settings); phones show only Overview, Leads, Inbox and Settings.
-- **Do not contact** page lets you add or remove blocked addresses.
+- **Sidebar** groups collapse and remember their state. Pages: Overview (what to do now), Find leads (search + triage of the new results), Leads (the table; Starred is a filter), Inbox, Analytics, Tools, Templates, Blocklist, Settings. Phones show only Overview, Leads, Inbox and Settings.
+- **Star** leads with the ☆ in any row. **Block** a business (row, detail panel or selection) and it is removed and never suggested by a search again; allow it back from Blocklist. Do-not-email addresses live on the same page.
+- **Tools** runs verify / contact lookup / audit / draft / send across all leads, imports pasted leads, exports, and cleans up duplicates.
