@@ -42,14 +42,15 @@ const IC = {
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
   wrench: '<path d="M14.7 6.3a4 4 0 005.2 5.2L21 12.6 12.6 21 3 11.4l8.4-8.4z"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>',
   ban: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   reply: '<path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 00-4-4H4"/>',
 };
 const ico = (k) => `<svg class="i" viewBox="0 0 24 24">${IC[k] || ''}</svg>`;
 
 /* ---------- state ---------- */
-let S = { leads: [], settings: {}, templates: [], sentToday: 0, suppressed: 0, configured: {} };
-const ui = { filter: 'all', query: '', cur: null, lastFind: null, finderOpen: null, replyFilter: 'replied', replyLead: null, chat: store.get('chat', []), pending: [], chatBusy: false };
+let S = { leads: [], settings: {}, suppressed: 0, configured: {} };
+const ui = { filter: 'all', query: '', cur: null, lastFind: null, finderOpen: null, callFilter: 'tocall', chat: store.get('chat', []), pending: [], chatBusy: false };
 const A = {}; // click actions
 const C = {}; // change actions
 
@@ -89,7 +90,7 @@ const setLead = (l) => { const i = S.leads.findIndex((x) => x.id === l.id); if (
 async function refresh() { S = await api('state'); refreshUI(); }
 
 /* ---------- auth ---------- */
-function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); $('#ov').innerHTML = ''; S = { leads: [], settings: {}, templates: [], sentToday: 0, suppressed: 0, configured: {} }; setTimeout(() => $('#pw').focus(), 30); }
+function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); $('#ov').innerHTML = ''; S = { leads: [], settings: {}, suppressed: 0, configured: {} }; setTimeout(() => $('#pw').focus(), 30); }
 $('#lf').onsubmit = async (e) => {
   e.preventDefault(); $('#le').textContent = '';
   let r; try { r = await fetch('/api/login', { method: 'POST', headers: HDR, credentials: 'same-origin', body: JSON.stringify({ password: $('#pw').value }) }); } catch { $('#le').textContent = 'Network error.'; return; }
@@ -100,7 +101,10 @@ $('#lf').onsubmit = async (e) => {
 $('#bOut').onclick = async () => { try { await fetch('/api/logout', { method: 'POST', headers: HDR, credentials: 'same-origin' }); } catch {} showLogin(); };
 
 /* ---------- theme + density ---------- */
-const G = () => window.FLGlass;
+// Glass controls are desktop-only: on phones they mis-position, so plain controls are used there.
+const PHONE = window.matchMedia ? window.matchMedia('(max-width: 820px)') : { matches: false };
+const G = () => (PHONE.matches || document.documentElement.dataset.fx === 'calm' ? null : window.FLGlass);
+PHONE.addEventListener && PHONE.addEventListener('change', () => { try { route(); } catch {} });
 function themeIcon() {
   const dark = document.documentElement.dataset.theme === 'dark';
   const comfy = document.documentElement.dataset.density === 'comfy';
@@ -136,11 +140,10 @@ $('#bThemeM').onclick = toggleTheme;
 const ROUTES = {
   dashboard: ['Overview', () => vDash(), 'home'],
   leads: ['Leads', () => vLeads(), 'users'],
-  replies: ['Inbox', () => vReplies(), 'mail'],
+  calls: ['Calls', () => vCalls(), 'phone'],
   find: ['Find leads', () => vFind(), 'search'],
   analytics: ['Analytics', () => vAnalytics(), 'chart'],
   tools: ['Tools', () => vTools(), 'wrench'],
-  templates: ['Templates', () => vTemplates(), 'edit'],
   blocklist: ['Blocklist', () => vBlocklist(), 'shield'],
   settings: ['Settings', () => vSettings(), 'gear'],
 };
@@ -153,15 +156,14 @@ const NAV = [
     ['All leads', 'users', 'leads', '', 1],
     ['Starred', 'star', 'leads', 'f=starred'],
   ]],
-  ['Conversations', [['Inbox', 'reply', 'replies', '', 1]]],
+  ['Calls', [['Calls', 'phone', 'calls', '', 1]]],
   ['Insights', [['Analytics', 'chart', 'analytics', '']]],
   ['Workshop', [
     ['Tools', 'wrench', 'tools', ''],
-    ['Templates', 'edit', 'templates', ''],
     ['Blocklist', 'shield', 'blocklist', ''],
   ]],
   ['Settings', [
-    ['Profile & voice', 'gear', 'settings', 't=profile', 1],
+    ['Profile', 'gear', 'settings', 't=profile', 1],
     ['Data sources', 'rows', 'settings', 't=sources'],
     ['Account', 'users', 'settings', 't=account'],
   ]],
@@ -175,7 +177,7 @@ function applyParams() {
   const f = q.get('f');
   if (k === 'leads' && q.get('find')) { history.replaceState(null, '', '#/find'); return; }
   if (k === 'leads' && f) { ui.filter = f; ui.query = ''; }
-  if (k === 'replies' && f) ui.replyFilter = f;
+  if (k === 'calls' && f) ui.callFilter = f;
   if (k === 'settings' && q.get('t')) ui.setTab = q.get('t');
 }
 function route() {
@@ -197,27 +199,26 @@ const navShut = () => new Set(store.get('navc', []));
 A.navGrp = (t) => { const g = t.dataset.g, c = navShut(); c.has(g) ? c.delete(g) : c.add(g); store.set('navc', [...c]); chrome(); };
 function chrome() {
   const k = page(), L = S.leads, [rk, rq] = hashParts();
-  const cnt = { replied: L.filter((l) => l.status === 'replied').length, starred: L.filter((l) => l.starred).length, blocked: (S.suppressed || 0) + (S.blocked || 0) };
-  const badge = (pg, q) => (pg === 'replies' ? cnt.replied : pg === 'blocklist' ? cnt.blocked : pg === 'leads' && q === 'f=starred' ? cnt.starred : pg === 'leads' && !q ? L.length : 0) || 0;
+  const cnt = { calls: L.filter((l) => typeof callbackDue === 'function' && callbackDue(l)).length, starred: L.filter((l) => l.starred).length, blocked: S.blocked || 0 };
+  const badge = (pg, q) => (pg === 'calls' ? cnt.calls : pg === 'blocklist' ? cnt.blocked : pg === 'leads' && q === 'f=starred' ? cnt.starred : pg === 'leads' && !q ? L.length : 0) || 0;
   const on = (pg, q) => { if ((ALIAS[rk] || rk) !== pg) return false; const want = new URLSearchParams(q); const key = [...want.keys()][0]; return key ? rq.get(key) === want.get(key) : ![...rq.keys()].some((x) => ['f', 't'].includes(x)); };
   const shut = navShut();
   $('#nav').innerHTML = NAV.map(([grp, items]) => {
     const single = items.length === 1 && grp === items[0][0];
     const hasOn = items.some(([, , pg, q]) => on(pg, q));
     const open = single || hasOn || !shut.has(grp);
-    const links = items.map(([label, ic, pg, q]) => { const b = badge(pg, q), a = on(pg, q); return `<a href="${navHref(pg, q)}" class="${a ? 'on' : ''}" ${a ? 'aria-current="page"' : ''} title="${label}">${ico(ic)}<span class="t">${label}</span>${b ? `<span class="badge${pg === 'replies' ? '' : ' soft'}">${b}</span>` : ''}</a>`; }).join('');
+    const links = items.map(([label, ic, pg, q]) => { const b = badge(pg, q), a = on(pg, q); return `<a href="${navHref(pg, q)}" class="${a ? 'on' : ''}" ${a ? 'aria-current="page"' : ''} title="${label}">${ico(ic)}<span class="t">${label}</span>${b ? `<span class="badge${pg === 'calls' ? '' : ' soft'}">${b}</span>` : ''}</a>`; }).join('');
     if (single) return `<div class="ng" role="group" aria-label="${grp}">${links}</div>`;
     return `<div class="ng ${open ? '' : 'c'}" role="group" aria-label="${grp}"><button class="nh" type="button" data-act="navGrp" data-g="${grp}" aria-expanded="${open}"><span>${grp}</span><svg class="i chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><div class="ni">${links}</div></div>`;
   }).join('');
-  const tabs = [['Overview', 'home', 'dashboard', ''], ['Leads', 'users', 'leads', ''], ['Inbox', 'reply', 'replies', ''], ['Settings', 'gear', 'settings', '']];
+  const tabs = [['Overview', 'home', 'dashboard', ''], ['Leads', 'users', 'leads', ''], ['Calls', 'phone', 'calls', ''], ['Settings', 'gear', 'settings', '']];
   const tk = ALIAS[rk] || rk;
   const tabOn = (pg) => (pg === tk) || (pg === 'leads' && false);
-  if (G()) G().mount($('#tabbar'), 'Tabs', { value: tabs.some((t) => tabOn(t[2])) ? tk : '', items: tabs.map(([label, ic, pg]) => ({ value: pg, href: '#/' + pg, label, icon: ico(ic), badge: pg === 'replies' ? cnt.replied : 0 })) });
-  else $('#tabbar').innerHTML = tabs.map(([label, ic, pg]) => `<a href="#/${pg}" class="${tabOn(pg) ? 'on' : ''}" ${tabOn(pg) ? 'aria-current="page"' : ''}>${ico(ic)}${label}${pg === 'replies' && cnt.replied ? `<span class="badge">${cnt.replied}</span>` : ''}</a>`).join('');
-  const lim = Number(S.settings.dailyLimit) || 0;
-  $('#qTxt').textContent = lim ? `${S.sentToday} / ${lim} sent today` : `${S.sentToday} sent today`;
-  $('#qBar').style.width = lim ? Math.min(100, (S.sentToday / lim) * 100) + '%' : '0%';
-  $('#qCap').textContent = lim ? 'Daily send cap' : 'No daily cap';
+  if (G()) G().mount($('#tabbar'), 'Tabs', { value: tabs.some((t) => tabOn(t[2])) ? tk : '', items: tabs.map(([label, ic, pg]) => ({ value: pg, href: '#/' + pg, label, icon: ico(ic), badge: pg === 'calls' ? cnt.calls : 0 })) });
+  else $('#tabbar').innerHTML = tabs.map(([label, ic, pg]) => `<a href="#/${pg}" class="${tabOn(pg) ? 'on' : ''}" ${tabOn(pg) ? 'aria-current="page"' : ''}>${ico(ic)}${label}${pg === 'calls' && cnt.calls ? `<span class="badge">${cnt.calls}</span>` : ''}</a>`).join('');
+  const ct = typeof callsToday === 'function' ? callsToday() : 0;
+  $('#qTxt').textContent = `${ct} call${ct === 1 ? '' : 's'} today`;
+  $('#qCap').textContent = `${L.filter((l) => typeof callbackDue === 'function' && callbackDue(l)).length} callbacks due`;
   $('#topHint').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   themeIcon();
 }
@@ -225,7 +226,7 @@ function refreshUI() {
   chrome();
   const k = page();
   if (k === 'dashboard') vDash();
-  else if (k === 'leads') renderLeadsTable(); else if (k === 'replies') renderReplyList(); else if (k === 'blocklist') vBlocklist();
+  else if (k === 'leads') renderLeadsTable(); else if (k === 'calls') renderCalls(); else if (k === 'blocklist') vBlocklist();
 }
 async function boot() {
   try { S = await api('state'); } catch (e) {
@@ -245,7 +246,7 @@ document.addEventListener('change', (e) => {
   const t = e.target.closest('[data-change]');
   if (t && C[t.dataset.change]) C[t.dataset.change](t, e);
 });
-A.go = (t) => go(t.dataset.to, t.dataset.filter ? { filter: t.dataset.filter } : t.dataset.rf ? { replyFilter: t.dataset.rf } : null);
+A.go = (t) => go(t.dataset.to, t.dataset.filter ? { filter: t.dataset.filter } : t.dataset.cf ? { callFilter: t.dataset.cf } : null);
 
 /* ---------- charts (inline SVG, no libraries) ---------- */
 function legendHtml(series) { return `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}</div>`; }
@@ -300,129 +301,114 @@ function hbars(data) {
 }
 
 /* ---------- derived data ---------- */
-const contacted = (l) => ['sent', 'replied'].includes(l.status);
+const contacted = (l) => !!(l.callLog && l.callLog.length) || ['sent', 'replied'].includes(l.status);
 function activity(n) {
   const days = []; const d0 = new Date(); d0.setHours(0, 0, 0, 0);
   for (let i = n - 1; i >= 0; i--) { const x = new Date(d0); x.setDate(d0.getDate() - i); days.push(+x); }
   const idx = new Map(days.map((d, i) => [d, i]));
   const mk = () => Array(n).fill(0);
-  const found = mk(), sent = mk(), replied = mk();
+  const found = mk(), calls = mk(), wins = mk();
   const bump = (arr, t) => { const x = new Date(t); x.setHours(0, 0, 0, 0); const i = idx.get(+x); if (i != null) arr[i]++; };
   for (const l of S.leads) {
     bump(found, l.createdAt);
-    if (l.sentAt) bump(sent, l.sentAt);
-    (l.followups || []).forEach((f) => bump(sent, f.t));
-    if (l.repliedAt) bump(replied, l.repliedAt);
+    (l.callLog || []).forEach((c) => { bump(calls, c.t); if (c.outcome === 'interested' || c.outcome === 'won') bump(wins, c.t); });
   }
-  return { labels: days.map((d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })), found, sent, replied };
+  return { labels: days.map((d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })), found, calls, wins };
 }
-const dueFollowup = (l) => l.status === 'sent' && l.sentAt && daysSince(l.sentAt) >= 3 && !(l.followups || []).length;
 
 /* ---------- dashboard ---------- */
 function vDash() {
   const L = S.leads, s = S.settings, name = firstName(s.senderName);
   const n = (f) => L.filter(f).length;
-  const withEmail = n((l) => validEmail(l.email)), cont = n(contacted), rep = n((l) => l.status === 'replied');
+  const withPhone = n((l) => !!l.phone), called = n(isCalled), won = n((l) => l.callStatus === 'won');
+  const interested = n((l) => ['interested', 'won'].includes(l.callStatus));
   const hr = new Date().getHours(), greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-  const lim = Number(s.dailyLimit) || 0;
   const setup = [
     ['Add your name', !!s.senderName, 'settings'],
-    ['Connect email sending', !!S.configured.email, 'settings'],
-    ['Connect the AI writer (Groq)', !!S.configured.groq, 'settings'],
+    ['Connect the AI (call prep)', !!S.configured.groq, 'settings'],
     ['Find your first leads', L.length > 0, 'find'],
   ];
   const todos = [];
   if (!L.length) todos.push({ n: '+', t: 'Find your first leads', d: 'Search a city for businesses with no website', to: 'find' });
-  const needEmail = L.filter((l) => !validEmail(l.email) && !['unsub', 'skip'].includes(l.status));
-  const unaud = needEmail.filter((l) => l.website && !l.audit).length;
-  if (rep) todos.push({ n: rep, t: `${rep} ${rep === 1 ? 'reply' : 'replies'} waiting`, d: 'Respond while they are warm', to: 'replies', rf: 'replied' });
-  const ready = n((l) => l.status === 'drafted' && validEmail(l.email));
-  if (ready) todos.push({ n: ready, t: 'Drafts ready to send', d: 'Review and send', to: 'leads', filter: 'drafted' });
-  const toDraft = n((l) => l.status === 'new' && validEmail(l.email));
-  if (toDraft) todos.push({ n: toDraft, t: 'Leads ready for a draft', d: 'Have AI write the openers', to: 'leads', filter: 'email' });
-  const due = n(dueFollowup);
-  if (due) todos.push({ n: due, t: 'Follow-ups due', d: 'Sent 3+ days ago, no reply', to: 'replies', rf: 'due' });
-  if (unaud) todos.push({ n: unaud, t: 'Sites to audit', d: 'Auditing also finds contact emails', to: 'leads', filter: 'noemail' });
-  const noEm = needEmail.length - unaud;
-  if (noEm > 0 && L.length) todos.push({ n: noEm, t: 'Leads need an email', d: 'Add one by hand or skip them', to: 'leads', filter: 'noemail' });
-
-  const act14 = activity(14);
+  const due = n(callbackDue);
+  if (due) todos.push({ n: due, t: `${due} callback${due === 1 ? '' : 's'} due`, d: 'You told them you would ring back', to: 'calls', cf: 'callback' });
+  const toCall = n((l) => !!l.phone && !isCalled(l) && isOpen(l));
+  if (toCall) todos.push({ n: toCall, t: 'Ready to call', d: `${n((l) => isHot(l) && !!l.phone)} of them are hot`, to: 'calls', cf: 'tocall' });
+  const noPhone = n((l) => !l.phone && isOpen(l));
+  if (noPhone && L.length) todos.push({ n: noPhone, t: 'Need a phone number', d: 'Run Find contact info on them', to: 'tools' });
+  const unaud = n((l) => l.website && !l.audit);
+  if (unaud) todos.push({ n: unaud, t: 'Sites to audit', d: 'Shows what to talk about on the call', to: 'tools' });
   const funnel = [
     { label: 'Leads found', value: L.length },
-    { label: 'Have an email', value: withEmail },
-    { label: 'Written to', value: n((l) => l.draft || contacted(l)) },
-    { label: 'Emailed', value: cont },
-    { label: 'Replied', value: rep },
+    { label: 'Have a phone number', value: withPhone },
+    { label: 'Called', value: called },
+    { label: 'Interested', value: interested },
+    { label: 'Won', value: won },
   ];
   const ev = [];
-  L.forEach((l) => {
-    if (l.sentAt) ev.push({ t: l.sentAt, k: 'send', x: `Emailed <b>${esc(l.name)}</b>` });
-    (l.followups || []).forEach((f) => ev.push({ t: f.t, k: 'send', x: `Followed up with <b>${esc(l.name)}</b>` }));
-    if (l.repliedAt) ev.push({ t: l.repliedAt, k: 'reply', x: `<b>${esc(l.name)}</b> replied` });
-  });
+  L.forEach((l) => (l.callLog || []).slice(0, 3).forEach((c) => ev.push({ t: c.t, x: `<b>${esc(l.name)}</b>: ${esc((OUT[c.outcome] || [c.outcome])[0])}` })));
   ev.sort((a, b) => b.t - a.t);
-
   const unset = setup.filter((x) => !x[1]);
   $('#view').innerHTML = `
-    <div class="hrow"><h2 class="hello">${greet}${name ? ', ' + esc(name) : ''}</h2><span class="hint">${L.length ? 'Here is where your outreach stands.' : 'Let us get your first leads in.'}</span></div>
+    <div class="hrow"><h2 class="hello">${greet}${name ? ', ' + esc(name) : ''}</h2><span class="hint">${L.length ? 'Here is where your calling stands.' : 'Let us get your first leads in.'}</span></div>
     ${S.security?.weakPassword ? `<div class="banner" role="alert"><b>Weak password.</b> Your dashboard password is under 12 characters. Set a longer one (DASH_PASSWORD in Cloudflare).</div>` : ''}
     ${unset.length ? `<div class="card pad setup"><b>Get set up</b>${unset.map(([t, , to]) => `<a class="chip" href="#/${to}">${esc(t)}</a>`).join('')}</div>` : ''}
     <div class="card kstrip">
-      <div><b>${L.length}</b><span>Leads</span><small>${withEmail} with email</small></div>
-      <div><b>${cont}</b><span>Emailed</span><small>${S.sentToday}${lim ? ' / ' + lim : ''} today</small></div>
-      <div><b>${rep}</b><span>Replies</span><small>${cont ? Math.round((rep / cont) * 100) + '% rate' : 'none yet'}</small></div>
-      <div><b>${n((l) => l.status === 'drafted')}</b><span>Drafts</span><small>${due} follow-ups due</small></div>
-      <div><b>${n((l) => l.starred)}</b><span>Starred</span><small>${(S.suppressed || 0) + (S.blocked || 0)} blocked</small></div>
+      <div><b>${L.length}</b><span>Leads</span><small>${withPhone} with a phone</small></div>
+      <div><b>${callsToday()}</b><span>Calls today</span><small>${called} leads called</small></div>
+      <div><b>${interested}</b><span>Interested</span><small>${called ? Math.round((interested / called) * 100) + '% of called' : 'none yet'}</small></div>
+      <div><b>${due}</b><span>Callbacks due</span><small>${n((l) => l.callStatus === 'callback')} scheduled</small></div>
+      <div><b>${n((l) => l.starred)}</b><span>Starred</span><small>${S.blocked || 0} blocked</small></div>
     </div>
-    ${todos.length ? `<div class="grid g2 tight">${todos.slice(0, 4).map((t) => `<button class="todo" data-act="go" data-to="${t.to}" ${t.filter ? `data-filter="${t.filter}"` : ''} ${t.rf ? `data-rf="${t.rf}"` : ''}><div class="n">${esc(t.n)}</div><div><b>${esc(t.t)}</b><span>${esc(t.d)}</span></div></button>`).join('')}</div>` : ''}
+    ${todos.length ? `<div class="grid g2 tight">${todos.slice(0, 4).map((t) => `<button class="todo" data-act="go" data-to="${t.to}" ${t.cf ? `data-cf="${t.cf}"` : ''}><div class="n">${esc(t.n)}</div><div><b>${esc(t.t)}</b><span>${esc(t.d)}</span></div></button>`).join('')}</div>` : ''}
     <div class="grid g2 tight">
       <div class="card pad"><div style="display:flex;align-items:center;gap:8px"><h3>Starred leads</h3><span class="sp"></span><a class="hint" href="#/leads?f=starred">${n((l) => l.starred)} total</a></div>${starredList(L)}</div>
-      <div class="card pad"><h3>Pipeline</h3>${hbars(funnel)}<div class="feed" style="margin-top:8px">${ev.slice(0, 3).map((e) => `<div><span class="dt">${ico(e.k === 'reply' ? 'reply' : 'send')}</span><span>${e.x}</span><time>${ago(e.t)}</time></div>`).join('') || '<div class="hint">Emails and replies will show up here.</div>'}</div></div>
+      <div class="card pad"><h3>Pipeline</h3>${hbars(funnel)}<div class="feed" style="margin-top:8px">${ev.slice(0, 3).map((e) => `<div><span class="dt">${ico('phone')}</span><span>${e.x}</span><time>${ago(e.t)}</time></div>`).join('') || '<div class="hint">Logged calls show up here.</div>'}</div></div>
     </div>`;
 }
 
 /* ---------- analytics ---------- */
 function analyticsHtml() {
   const L = S.leads, act = activity(30);
-  const cont = L.filter(contacted), rep = L.filter((l) => l.status === 'replied');
-  const rate = cont.length ? Math.round((rep.length / cont.length) * 100) : 0;
-  const withReplyTimes = L.filter((l) => l.sentAt && l.repliedAt);
-  const avgReply = withReplyTimes.length ? (withReplyTimes.reduce((a, l) => a + (l.repliedAt - l.sentAt), 0) / withReplyTimes.length / 86400000).toFixed(1) : null;
+  const called = L.filter(isCalled), win = L.filter((l) => ['interested', 'won'].includes(l.callStatus));
+  const calls = act.calls.reduce((a, b) => a + b, 0);
+  const rate = called.length ? Math.round((win.length / called.length) * 100) : 0;
+  const reach = L.reduce((a, l) => a + (l.callLog || []).filter((c) => !['noanswer', 'voicemail', 'wrongnumber'].includes(c.outcome)).length, 0);
+  const allCalls = L.reduce((a, l) => a + (l.callLog || []).length, 0);
   const group = (l) => (!l.website ? 'No website' : !l.audit ? 'Not audited' : l.audit.score >= 50 ? 'Poor site' : l.audit.score >= 25 ? 'Dated site' : 'Decent site');
   const groups = ['No website', 'Poor site', 'Dated site', 'Decent site', 'Not audited'];
-  const gData = groups.map((g) => { const ls = L.filter((l) => group(l) === g), c = ls.filter(contacted), r = ls.filter((l) => l.status === 'replied'); return { g, n: ls.length, c: c.length, r: r.length, rate: c.length ? Math.round((r.length / c.length) * 100) : null }; });
+  const gData = groups.map((g) => { const ls = L.filter((l) => group(l) === g), c = ls.filter(isCalled), r = ls.filter((l) => ['interested', 'won'].includes(l.callStatus)); return { g, n: ls.length, c: c.length, r: r.length, rate: c.length ? Math.round((r.length / c.length) * 100) : null }; });
   const best = gData.filter((x) => x.c >= 3 && x.rate != null).sort((a, b) => b.rate - a.rate)[0];
   const cats = {};
-  L.forEach((l) => { const k = l.category || 'other'; (cats[k] ||= { n: 0, c: 0, r: 0 }).n++; if (contacted(l)) cats[k].c++; if (l.status === 'replied') cats[k].r++; });
+  L.forEach((l) => { const k = l.category || 'other'; (cats[k] ||= { n: 0, c: 0, r: 0 }).n++; if (isCalled(l)) cats[k].c++; if (['interested', 'won'].includes(l.callStatus)) cats[k].r++; });
   const catRows = Object.entries(cats).sort((a, b) => b[1].n - a[1].n).slice(0, 8);
   const colors = { 'No website': 'var(--c4)', 'Poor site': 'var(--c3)', 'Dated site': 'var(--c1)', 'Decent site': 'var(--c2)', 'Not audited': 'var(--line)' };
-  const sentTotal = act.sent.reduce((a, b) => a + b, 0);
-
+  const outs = Object.entries(OUT).map(([k, [t]]) => ({ label: t, value: L.filter((l) => l.callStatus === k).length }));
   return `
     <div class="grid g5 tight">
       <div class="card kpi"><b>${L.length}</b><span>Total leads</span></div>
-      <div class="card kpi"><b>${cont.length}</b><span>Emailed</span></div>
-      <div class="card kpi"><b>${rep.length}</b><span>Replies</span></div>
-      <div class="card kpi"><b>${rate}%</b><span>Reply rate</span></div>
-      <div class="card kpi"><b>${avgReply ?? '–'}</b><span>Avg days to reply</span></div>
+      <div class="card kpi"><b>${called.length}</b><span>Called</span></div>
+      <div class="card kpi"><b>${allCalls ? Math.round((reach / allCalls) * 100) : 0}%</b><span>Picked up</span></div>
+      <div class="card kpi"><b>${win.length}</b><span>Interested or won</span></div>
+      <div class="card kpi"><b>${rate}%</b><span>Of called leads</span></div>
     </div>
-    ${best ? `<div class="banner" style="background:var(--acc2);color:var(--acc)"><b>Insight:</b> ${esc(best.g)} leads reply the most so far (${best.rate}% of ${best.c} emailed). Consider targeting more of them.</div>` : ''}
+    ${best ? `<div class="banner" style="background:var(--acc2);color:var(--acc)"><b>Insight:</b> ${esc(best.g)} leads say yes most often: ${best.rate}% of ${best.c} called.</div>` : ''}
     <div class="grid g2 tight">
-      <div class="card pad"><h3>Emails sent per day</h3><div class="hint">Last 30 days · ${sentTotal} total</div>${barChart(act.labels, act.sent)}</div>
-      <div class="card pad"><h3>Leads found vs replies</h3>${lineChart(act.labels, [{ name: 'Leads found', color: 'var(--c1)', values: act.found }, { name: 'Replies', color: 'var(--c4)', values: act.replied }], 190)}</div>
+      <div class="card pad"><h3>Calls per day</h3><div class="hint">Last 30 days · ${calls} total</div>${barChart(act.labels, act.calls, 'var(--c1)')}</div>
+      <div class="card pad"><h3>Where leads stand</h3><div class="hint">Latest call outcome per lead</div>${hbars(outs)}</div>
     </div>
     <div class="grid g2 tight">
-      <div class="card pad"><h3>Lead quality</h3><div class="hint">How weak each lead's web presence is</div>${donut(gData.map((x) => ({ label: x.g, value: x.n, color: colors[x.g] })))}</div>
-      <div class="card"><div class="pad" style="padding-bottom:6px"><h3>Which leads reply?</h3><div class="hint">Needs a few sends per group to mean much</div></div><div class="tw"><table><thead><tr><th>Group</th><th>Leads</th><th>Emailed</th><th>Replied</th><th>Rate</th></tr></thead><tbody>${gData.map((x) => `<tr><td>${x.g}</td><td>${x.n}</td><td>${x.c}</td><td>${x.r}</td><td>${x.rate == null ? '–' : x.rate + '%'}</td></tr>`).join('')}</tbody></table></div></div>
+      <div class="card pad"><h3>Lead quality</h3><div class="hint">How weak each lead's web presence is</div>${donut(gData.filter((x) => x.n).map((x) => ({ label: x.g, value: x.n, color: colors[x.g] })))}</div>
+      <div class="card"><div class="pad" style="padding-bottom:6px"><h3>Which leads say yes?</h3><div class="hint">Needs a few calls before it means much</div></div><div class="tw"><table><thead><tr><th>Lead type</th><th>Leads</th><th>Called</th><th>Interested</th><th>Rate</th></tr></thead><tbody>${gData.map((x) => `<tr><td>${esc(x.g)}</td><td>${x.n}</td><td>${x.c}</td><td>${x.r}</td><td>${x.rate == null ? '–' : x.rate + '%'}</td></tr>`).join('')}</tbody></table></div></div>
     </div>
-    <div class="card"><div class="pad" style="padding-bottom:6px"><h3>By category</h3></div><div class="tw"><table><thead><tr><th>Category</th><th>Leads</th><th>Emailed</th><th>Replied</th><th>Rate</th></tr></thead><tbody>${catRows.length ? catRows.map(([k, v]) => `<tr><td style="text-transform:capitalize">${esc(k)}</td><td>${v.n}</td><td>${v.c}</td><td>${v.r}</td><td>${v.c ? Math.round((v.r / v.c) * 100) + '%' : '–'}</td></tr>`).join('') : '<tr><td colspan="5" class="hint">No leads yet.</td></tr>'}</tbody></table></div></div>`;
+    <div class="card"><div class="pad" style="padding-bottom:6px"><h3>By category</h3></div><div class="tw"><table><thead><tr><th>Category</th><th>Leads</th><th>Called</th><th>Interested</th></tr></thead><tbody>${catRows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.n}</td><td>${v.c}</td><td>${v.r}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No leads yet.</td></tr>'}</tbody></table></div></div>`;
 }
 
 /* ---------- settings ---------- */
 function vSettings() {
   const tab = ui.setTab || 'profile';
   $('#view').innerHTML = `
-    <div class="chips tabs" role="tablist" aria-label="Settings sections">${[['profile', 'Profile & voice'], ['sources', 'Data sources'], ['account', 'Account']].map(([k, t]) => `<button class="chip ${tab === k ? 'on' : ''}" role="tab" aria-selected="${tab === k}" data-act="setTab" data-t="${k}">${t}</button>`).join('')}</div>
+    <div class="chips tabs" role="tablist" aria-label="Settings sections">${[['profile', 'Profile'], ['sources', 'Data sources'], ['account', 'Account']].map(([k, t]) => `<button class="chip ${tab === k ? 'on' : ''}" role="tab" aria-selected="${tab === k}" data-act="setTab" data-t="${k}">${t}</button>`).join('')}</div>
     <div id="setBody"></div>`;
   if (tab === 'profile') setProfile(); else if (tab === 'sources') setSources(); else setAccount();
 }
@@ -433,17 +419,14 @@ function setProfile() {
   const field = (id, label, val, ph = '', type = 'text') => `<div><label for="${id}">${label}</label><input id="${id}" type="${type}" value="${esc(val)}" placeholder="${esc(ph)}"></div>`;
   $('#setBody').innerHTML = `
     <div class="grid g2" style="align-items:start">
-      <div class="card pad stack"><h3>You</h3><div class="hint">Emails go out as plain text, exactly as you write them, with nothing added.</div>
-        <div class="grid g2">${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}${field('sAgency', 'Agency name', s.businessName, 'FlightLine')}</div>
-        ${field('sReply', 'Your email (reply-to and test sends)', s.replyTo, 'your Gmail address', 'email')}
-        <div class="grid g2">${field('sLim', 'Daily send cap (0 = none)', s.dailyLimit, '0', 'number')}${field('sGap', 'Seconds between bulk sends (0 = none)', s.sendGap, '0', 'number')}</div>
+      <div class="card pad stack"><h3>You</h3><div class="hint">Used in call prep and by the assistant.</div>
+        <div class="grid g2">${field('sName', 'Your name', s.senderName, 'Zaid Ahmed')}${field('sAgency', 'Business name', s.businessName, 'FlightLine')}</div>
         ${field('sPort', 'Portfolio link (optional)', s.portfolioUrl)}
       </div>
-      <div class="card pad stack"><h3>AI voice</h3><div class="hint">The writer uses these to sound like you and stay accurate.</div>
-        <div><label for="sTone">Tone</label><select id="sTone">${[['friendly', 'Friendly (default)'], ['casual', 'Casual and short'], ['direct', 'Direct'], ['professional', 'Professional']].map(([v, t]) => `<option value="${v}" ${s.tone === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="card pad stack"><h3>Call pitch</h3><div class="hint">Call prep and the assistant use these to stay accurate.</div>
         <div><label for="sOffer">Your offer (one or two sentences)</label><textarea id="sOffer" style="min-height:64px">${esc(s.offer)}</textarea></div>
         <div><label for="sAbout">About you (optional)</label><input id="sAbout" value="${esc(s.about)}"></div>
-        <div><label for="sKnow">Notes for replies and chat (pricing, process, turnaround)</label><textarea id="sKnow" style="min-height:72px" placeholder="e.g. Sites start at $X, live in about a week, hosting $Y/mo">${esc(s.knowledge)}</textarea></div>
+        <div><label for="sKnow">Notes (pricing, process, turnaround)</label><textarea id="sKnow" style="min-height:72px" placeholder="e.g. Sites start at $X, live in about a week, hosting $Y/mo">${esc(s.knowledge)}</textarea></div>
       </div>
     </div>
     <div class="acts" style="margin-top:12px"><button class="btn p" data-act="saveSettings">Save settings</button><button class="btn s" data-act="testAI">${ico('spark')} Test AI</button><span id="aiTest" class="hint"></span></div>`;
@@ -460,14 +443,12 @@ function setAccount() {
         <div class="acts" style="margin-top:10px"><button class="btn s" data-act="signOut">Sign out</button><button class="btn s d" data-act="logoutAll">Sign out of all devices</button></div>
       </div>
       <div class="card pad stack"><h3>Look and feel</h3>
-        <div><label for="fxSel">Glass effects</label><select id="fxSel" data-change="fxSet"><option value="full" ${fx === 'full' ? 'selected' : ''}>Full (drifting orbs, pointer light, springy buttons)</option><option value="calm" ${fx === 'calm' ? 'selected' : ''}>Calm (static glass only)</option></select></div>
-        <div class="hint">Effects never block clicks or typing. Switch to Calm if you want it fully still. Devices set to reduce motion are always calm.</div>
-        <h3 style="margin-top:6px">Tips for better replies</h3>
-        <ul class="hint" style="margin:0;padding-left:18px;line-height:1.7"><li>Send a test to yourself first and check spam.</li><li>Fill in your notes so reply drafts quote real prices.</li><li>Follow up once after 3-4 days; two emails is plenty.</li></ul>
+        <div><label for="fxSel">Effects</label><select id="fxSel" data-change="fxSet"><option value="full" ${fx === 'full' ? 'selected' : ''}>Full (glass controls on desktop)</option><option value="calm" ${fx === 'calm' ? 'selected' : ''}>Off (plain controls everywhere)</option></select></div>
+        <div class="hint">Effects never block clicks or typing. Phones always use plain controls.</div>
       </div>
     </div>`;
 }
-C.fxSet = (i) => { try { localStorage.setItem('fx', i.value); } catch {} document.documentElement.dataset.fx = i.value; toast(i.value === 'calm' ? 'Glass effects calmed' : 'Glass effects on', 1800); };
+C.fxSet = (i) => { try { localStorage.setItem('fx', i.value); } catch {} document.documentElement.dataset.fx = i.value; toast(i.value === 'calm' ? 'Effects off' : 'Effects on', 1800); };
 
 const SRC_STATE = {};
 async function setSources() {
@@ -517,7 +498,7 @@ A.testAI = (btn) => act(btn, async () => {
     : `<span style="color:var(--bad)"><b>AI failed:</b> ${esc(r.error || 'unknown error')}</span>${models.length ? '<br>Models your key can use: ' + esc(models.join(', ')) : ''}`;
 });
 A.saveSettings = (btn) => act(btn, async () => {
-  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, replyTo: $('#sReply').value, dailyLimit: $('#sLim').value, sendGap: $('#sGap').value, tone: $('#sTone').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value, businessName: $('#sAgency').value } });
+  const r = await api('settings', { method: 'PUT', body: { senderName: $('#sName').value, offer: $('#sOffer').value, about: $('#sAbout').value, knowledge: $('#sKnow').value, portfolioUrl: $('#sPort').value, businessName: $('#sAgency').value } });
   S.settings = r.settings; chrome(); toast('Settings saved');
 });
 
@@ -538,27 +519,15 @@ const L_EMPTY = () => !S.leads.length;
 
 let BL = null;
 async function vBlocklist() {
-  $('#view').innerHTML = `<div class="grid g2">
-    <div class="card pad"><h3>Blocked businesses</h3><div class="hint">Never suggested by a search again. Block a business from its row or detail panel in Leads or Find leads.</div>
-      <div class="list" id="blBiz" style="margin-top:12px"><div class="empty">Loading…</div></div></div>
-    <div class="card pad"><h3>Do not email</h3><div class="hint">Addresses FlightLine will never send to. A reply of "unsubscribe" adds one automatically.</div>
-      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><input class="in" id="dncIn" type="email" placeholder="name@business.com" style="flex:1;min-width:180px" aria-label="Email to block"><button class="btn p" data-act="dncAdd">Add</button></div>
-      <div class="list" id="dncList" style="margin-top:12px"><div class="empty">Loading…</div></div></div></div>`;
-  try { const [a, b] = await Promise.all([api('blocked'), api('suppress')]); BL = { biz: a.list, em: b.list }; } catch (e) { toast(e.message, 4000); BL = BL || { biz: [], em: [] }; }
+  $('#view').innerHTML = `<div class="card pad"><h3>Blocked businesses</h3><div class="hint">These are never suggested by a search again. Block a business from its row or detail panel in Leads or Find leads.</div>
+    <div class="list" id="blBiz" style="margin-top:12px"><div class="empty">Loading…</div></div></div>`;
+  try { BL = { biz: (await api('blocked')).list }; } catch (e) { toast(e.message, 4000); BL = BL || { biz: [] }; }
   blDraw();
 }
 function blDraw() {
-  const b = $('#blBiz'), e = $('#dncList'); if (!b || !e) return;
+  const b = $('#blBiz'); if (!b) return;
   b.innerHTML = BL.biz.length ? BL.biz.map((x) => `<div class="li" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><div class="nm">${esc(x.name)}</div><div class="sub">${esc(x.address || '')}</div></div><button class="btn s" data-act="blDel" data-k="${esc(x.key)}">Allow again</button></div>`).join('') : '<div class="empty">No blocked businesses.</div>';
-  e.innerHTML = BL.em.length ? BL.em.map((m) => `<div class="li" style="display:flex;align-items:center;gap:8px"><span class="nm" style="flex:1">${esc(m)}</span><button class="btn s" data-act="dncDel" data-e="${esc(m)}">Remove</button></div>`).join('') : '<div class="empty">Nobody is blocked.</div>';
-  S.suppressed = BL.em.length; S.blocked = BL.biz.length; chrome();
+  S.blocked = BL.biz.length; chrome();
 }
-A.dncAdd = async () => { try { BL.em = (await api('suppress', { method: 'POST', body: { email: $('#dncIn').value } })).list; $('#dncIn').value = ''; blDraw(); } catch (e) { toast(e.message, 4000); } };
-A.dncDel = async (t) => { try { BL.em = (await api('suppress', { method: 'POST', body: { email: t.dataset.e, remove: true } })).list; blDraw(); } catch (e) { toast(e.message, 4000); } };
 A.blDel = async (t) => { try { BL.biz = (await api('blocked', { method: 'POST', body: { remove: t.dataset.k } })).list; blDraw(); } catch (e) { toast(e.message, 4000); } };
 
-function vTemplates() {
-  const n = (S.templates || []).length;
-  $('#view').innerHTML = `<div class="card pad"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div><h3>Quick-reply templates</h3><div class="hint">Short answers you reuse in the Inbox. ${n} saved.</div></div><div class="sp"></div><button class="btn p" data-act="tplEdit">Edit templates</button></div>
-    <div class="list" style="margin-top:12px">${(S.templates || []).map((t) => `<div class="li"><div class="nm">${esc(t.name || 'Template')}</div><div class="sub" style="white-space:pre-wrap">${esc(String(t.body || '').slice(0, 280))}</div></div>`).join('') || '<div class="empty">No templates yet.</div>'}</div></div>`;
-}

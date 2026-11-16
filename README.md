@@ -80,10 +80,15 @@ With no keys at all it still works: OpenStreetMap for businesses, then DuckDuckG
 - Sending uses the `gmail.send` scope only, so the app cannot read your inbox. Paste replies into the Quick replies page to have the AI answer them.
 
 
-## Lead count, distance and AI help
+## How it works now (calls first)
 
-- **How many leads** (steps of 5, or type any number 1-100) and **Distance in miles** are in the finder. Smaller counts use fewer search/API calls, which saves your free quotas.
-- **Groq as a second opinion.** When normal checks can't decide whether a business has a website, Groq picks from the real search results (it can't invent a URL, and the page must still load and mention the business). Set `AI_LEADS=off` in Cloudflare to turn this off.
-- **Sidebar** groups collapse and remember their state. Pages: Overview (what to do now), Find leads (search + triage of the new results), Leads (the table; Starred is a filter), Inbox, Analytics, Tools, Templates, Blocklist, Settings. Phones show only Overview, Leads, Inbox and Settings.
-- **Star** leads with the ☆ in any row. **Block** a business (row, detail panel or selection) and it is removed and never suggested by a search again; allow it back from Blocklist. Do-not-email addresses live on the same page.
-- **Tools** runs verify / contact lookup / audit / draft / send across all leads, imports pasted leads, exports, and cleans up duplicates.
+FlightLine finds businesses with no or poor websites and helps you phone them.
+
+- **Find leads** searches a city (count in steps of 5, distance in miles) and lists the new results so you can star or block them.
+- **Leads** is the full table. Filters include To call, Call back, Interested, Called and No phone. Every row has a tap-to-call number.
+- **Calls** is your queue: To call, Call back (due ones are flagged), No answer, Interested, All called. Log an outcome in one tap, or open a lead to add a note and a call-back date. **Call prep** (Groq) writes an opener, talking points and likely pushback from what was actually found.
+- **Analytics** shows calls per day, pick-up rate, which lead types say yes, and results by category.
+- **Tools** runs website verification, phone lookup and audits across all leads, imports pasted leads, exports CSV, and cleans up duplicates.
+- **Blocklist**: blocked businesses are never suggested again; allow any back from there.
+- **Groq as a second opinion** on whether a business really has a website (set `AI_LEADS=off` to disable). It only picks from real search results.
+- Phones use plain controls; the glass controls are desktop-only and can be turned off in Settings > Account.
