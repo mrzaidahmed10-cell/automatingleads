@@ -373,6 +373,13 @@ async function deleteLead(env, id) {
 
 // Works out whether leads really lack a website. The slow network part runs first with no database lock,
 // then the results are applied to a freshly loaded copy so parallel calls never overwrite each other.
+// A business that has shut down is removed and remembered, so no search brings it back.
+function dropClosed(db, lead) {
+  delete db.leads[lead.id];
+  db.dismissed = [...new Set([...(db.dismissed || []), lead.id])].slice(-3000);
+  return { id: lead.id, name: lead.name };
+}
+
 async function verify(env, p) {
   const ids = (Array.isArray(p.ids) ? p.ids : []).slice(0, 3).map(String);
   const city = cap(p.city, 120);
@@ -380,11 +387,12 @@ async function verify(env, p) {
   const todo = ids.map((id) => snap.leads[id]).filter(Boolean);
   const outs = await Promise.all(todo.map((l) => verifySite(env, { name: l.name, phone: l.phone, address: l.address, website: l.website }, city).catch((e) => ({ status: 'unsure', evidence: [String(e.message).slice(0, 120)], checkedAt: Date.now() }))));
   const db = await loadDB(env);
-  const leads = [];
+  const leads = [], closed = [];
   todo.forEach((l, i) => {
     const lead = db.leads[l.id];
     if (!lead) return;
     const r = outs[i];
+    if (r.status === 'closed') { closed.push(dropClosed(db, lead)); return; }
     lead.web = { status: r.status, source: r.source || '', confidence: r.confidence || '', evidence: (r.evidence || []).slice(0, 3), social: r.social || '', checkedAt: r.checkedAt };
     if (r.status === 'site' && r.source !== 'listed' && !lead.website) {
       lead.website = cap(r.site, 300);
@@ -393,7 +401,7 @@ async function verify(env, p) {
     leads.push(lead);
   });
   await saveDB(env, db);
-  return json({ leads });
+  return json({ leads, closed });
 }
 
 // Fills in what's missing (email, phone, website, social pages) from public sources. Never overwrites something you already have;
@@ -443,15 +451,16 @@ async function audit(env, p) {
   const todo = ids.map((id) => snap.leads[id]).filter((l) => l?.website);
   const rs = await Promise.all(todo.map((l) => auditSite(l.website, { category: l.category, name: l.name })));
   const db = await loadDB(env); // fresh copy, so parallel calls never overwrite each other
-  const out = [];
+  const out = [], closed = [];
   todo.forEach((t, i) => {
     const lead = db.leads[t.id];
     if (!lead || lead.website !== t.website) return;
+    if (rs[i].closed) { closed.push(dropClosed(db, lead)); return; }
     applyAudit(db, lead, rs[i]);
     out.push(lead);
   });
   await saveDB(env, db);
-  return json({ leads: out });
+  return json({ leads: out, closed });
 }
 
 /* ---------------- AI ---------------- */
@@ -661,9 +670,11 @@ function buildTools(env, db, pending) {
         const ls = (await Promise.all((a.ids || []).slice(0, 5).map(async (id) => {
           const l = db.leads[String(id)];
           if (!l?.website) return null;
-          return applyAudit(db, l, await auditSite(l.website, { category: l.category, name: l.name }));
+          const r = await auditSite(l.website, { category: l.category, name: l.name });
+          if (r.closed) { dropClosed(db, l); return { id: l.id, name: l.name, closed: true, audit: { score: 0, issues: ['Closed down; removed'] } }; }
+          return applyAudit(db, l, r);
         }))).filter(Boolean);
-        return { audited: ls.filter(Boolean).map((l) => ({ id: l.id, name: l.name, score: l.audit.score, issues: l.audit.issues, email: l.email })) };
+        return { audited: ls.filter(Boolean).map((l) => ({ id: l.id, name: l.name, closed: l.closed, score: l.audit.score, issues: l.audit.issues, email: l.email })) };
       },
     },
     verify_leads: {
@@ -673,6 +684,7 @@ function buildTools(env, db, pending) {
         const rs = await Promise.all(ls.map((l) => verifySite(env, { name: l.name, phone: l.phone, address: l.address, website: l.website }, String(a.city || '')).catch(() => null)));
         return { verified: ls.map((l, i) => {
           const r = rs[i]; if (!r) return { id: l.id, name: l.name, status: 'unsure' };
+          if (r.status === 'closed') { dropClosed(db, l); return { id: l.id, name: l.name, status: 'closed', note: 'Closed down; removed from your leads' }; }
           l.web = { status: r.status, source: r.source || '', confidence: r.confidence || '', evidence: (r.evidence || []).slice(0, 3), social: r.social || '', checkedAt: r.checkedAt };
           if (r.status === 'site' && r.source !== 'listed' && !l.website) { l.website = cap(r.site, 300); l.audit = null; }
           return { id: l.id, name: l.name, status: r.status, site: l.website || '', evidence: r.evidence };

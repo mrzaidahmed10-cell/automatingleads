@@ -92,3 +92,7 @@ FlightLine finds businesses with no or poor websites and helps you phone them.
 - **Blocklist**: blocked businesses are never suggested again; allow any back from there.
 - **Groq as a second opinion** on whether a business really has a website (set `AI_LEADS=off` to disable). It only picks from real search results.
 - Phones use plain controls; the glass controls are desktop-only and can be turned off in Settings > Account.
+
+## Closed businesses
+
+Closed places are filtered out at every step: map listings flagged closed (OpenStreetMap lifecycle tags, Google/Serper status), listings with no phone and no reviews, search results saying the business has closed (checked when verifying, matched to the city), and sites that say they have closed (checked when auditing). Anything found closed after the fact is removed and remembered, so a search never brings it back.

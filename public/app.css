@@ -541,3 +541,17 @@ a.tel{font-weight:600;white-space:nowrap}
 .side .btn,.side .btn:not(.g):not(.p){background:#ffffff0d;border-color:var(--sline);color:var(--sink2)}
 .side .btn:hover{background:#ffffff18}
 @media(max-width:640px){.kstrip>div:last-child:nth-child(odd){grid-column:1/-1}}
+
+/* assistant markdown */
+.msg.a{white-space:normal}
+.msg.a>*:first-child{margin-top:0}.msg.a>*:last-child{margin-bottom:0}
+.msg.a p{margin:0 0 8px}
+.msg.a .mh{margin:12px 0 4px;line-height:1.3;font-weight:700}
+.msg.a h2.mh{font-size:15px}.msg.a h3.mh{font-size:14px}.msg.a h4.mh,.msg.a h5.mh{font-size:13px;color:var(--mut);text-transform:none}
+.msg.a ul,.msg.a ol{margin:2px 0 8px;padding-left:20px}.msg.a li{margin:2px 0}.msg.a li>ul,.msg.a li>ol{margin:2px 0}
+.msg.a code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 4px}
+.msg.a pre{margin:6px 0 8px;padding:8px 10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:auto}.msg.a pre code{border:0;padding:0;background:none}
+.msg.a blockquote{margin:6px 0 8px;padding:2px 10px;border-left:3px solid var(--line);color:var(--mut)}
+.msg.a hr{border:0;border-top:1px solid var(--line);margin:10px 0}
+.msg.a a{color:var(--acc);text-decoration:underline}
+.msg.a .mt{overflow:auto;margin:6px 0 8px}.msg.a table{border-collapse:collapse;font-size:12.5px}.msg.a th,.msg.a td{border:1px solid var(--line);padding:4px 8px;text-align:left}.msg.a th{background:var(--bg)}

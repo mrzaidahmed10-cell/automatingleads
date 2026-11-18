@@ -249,12 +249,14 @@ A.bulkContacts = (btn) => bulk(btn, async (p) => {
 A.bulkAudit = (btn) => bulk(btn, async (p) => {
   const ids = S.leads.filter((l) => l.website && !l.audit).map((l) => l.id);
   if (!ids.length) return toast('Nothing to audit');
+  let nClosed = 0;
   for (let i = 0; i < ids.length; i += 4) {
     p(`Auditing ${Math.min(i + 4, ids.length)}/${ids.length}…`);
     const r = await api('audit', { method: 'POST', body: { ids: ids.slice(i, i + 4) } });
-    r.leads.forEach(setLead);
+    const gone = (r.closed || []).map((g) => g.id); if (gone.length) S.leads = S.leads.filter((x) => !gone.includes(x.id));
+    r.leads.forEach(setLead); nClosed += gone.length;
   }
-  toast('Audit done.');
+  toast(nClosed ? `Audit done. Removed ${nClosed} closed business${nClosed === 1 ? '' : 'es'}.` : 'Audit done.');
 });
 /* ---------- add lead ---------- */
 A.addLeadModal = () => {
@@ -345,6 +347,7 @@ A.dAudit = (btn) => act(btn, async () => {
   const l = curLead(), b = contactBody();
   if (b.website !== undefined) await api('leads/' + l.id, { method: 'PATCH', body: { website: b.website } });
   const r = await api('audit', { method: 'POST', body: { ids: [l.id] } });
+  if ((r.closed || []).length) { S.leads = S.leads.filter((x) => x.id !== l.id); closeOv(); chrome(); if ($('#tb')) renderLeadsTable(); return toast('That business has closed, so it was removed.', 5000); }
   upd(r.leads[0]); toast('Audit done');
 });
 A.dDel = async () => {
@@ -446,8 +449,9 @@ async function pool(items, n, fn) {
 }
 async function checkAndAudit(ids, say) {
   PIPE.stop = false; PIPE.on = true;
-  const st = { total: ids.length, checked: 0, site: 0, none: 0, social: 0, unsure: 0, audited: 0, poor: 0 };
-  const line = (ph) => say(`${ph} · ${st.checked}/${st.total} checked · <b>${st.none}</b> no site · ${st.social} social only · ${st.site} have a site${st.audited ? ` (${st.poor} poor)` : ''} <button class="btn s" data-act="stopPipe">Stop</button>`);
+  const st = { total: ids.length, checked: 0, site: 0, none: 0, social: 0, unsure: 0, audited: 0, poor: 0, closed: 0 };
+  const dropGone = (r) => (r.closed || []).forEach((g) => { S.leads = S.leads.filter((x) => x.id !== g.id); st.closed++; });
+  const line = (ph) => say(`${ph} · ${st.checked}/${st.total} checked · <b>${st.none}</b> no site · ${st.social} social only · ${st.site} have a site${st.audited ? ` (${st.poor} poor)` : ''}${st.closed ? ` · <b>${st.closed}</b> closed removed` : ''} <button class="btn s" data-act="stopPipe">Stop</button>`);
   try {
     const todo = ids.filter((id) => { const l = S.leads.find((x) => x.id === id); return l && !l.website; });
     const chunks = []; for (let i = 0; i < todo.length; i += 2) chunks.push(todo.slice(i, i + 2));
@@ -455,6 +459,7 @@ async function checkAndAudit(ids, say) {
     await pool(chunks, 2, async (ch) => {
       try {
         const r = await api('verify', { method: 'POST', body: { ids: ch, city: store.get('city', '') } });
+        dropGone(r); st.checked += (r.closed || []).length;
         r.leads.forEach((l) => { setLead(l); st.checked++; const s = l.web && l.web.status; if (s === 'site') st.site++; else if (s === 'none') st.none++; else if (s === 'social') st.social++; else st.unsure++; if ($('#tb')) patchRow(l); });
       } catch { st.checked += ch.length; st.unsure += ch.length; }
       line('Checking websites');
@@ -462,7 +467,7 @@ async function checkAndAudit(ids, say) {
     const need = ids.filter((id) => { const l = S.leads.find((x) => x.id === id); return l && l.website && !l.audit; });
     const ach = []; for (let i = 0; i < need.length; i += 3) ach.push(need.slice(i, i + 3));
     await pool(ach, 2, async (ch) => {
-      try { const r = await api('audit', { method: 'POST', body: { ids: ch } }); r.leads.forEach((l) => { setLead(l); st.audited++; if (l.audit.score >= 40 && !l.audit.unverified) st.poor++; if ($('#tb')) patchRow(l); }); } catch {}
+      try { const r = await api('audit', { method: 'POST', body: { ids: ch } }); dropGone(r); r.leads.forEach((l) => { setLead(l); st.audited++; if (l.audit.score >= 40 && !l.audit.unverified) st.poor++; if ($('#tb')) patchRow(l); }); } catch {}
       line('Auditing sites');
     });
     if (CONTACTS.on) {
