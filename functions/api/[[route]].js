@@ -112,17 +112,22 @@ const quality = (i) => (i.phone ? 2 : 0) + (i.reviews > 0 ? 1 : 0) + (i.rating >
 const bizKey = (n) => String(n || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
 const clampLimit = (v) => Math.min(Math.max(Math.round(Number(v)) || 20, 1), 100);
 
-function mergeFound(db, items, limit = Infinity) {
+function mergeFound(db, items, limit = Infinity, mode = 'any') {
   let added = 0,
     dupes = 0,
     hidden = 0;
   const ids = [];
   const gone = new Set(db.dismissed || []);
+  const sited = new Set(mode === 'none' ? db.sited || [] : []); // found to have a website earlier, so not a "no website" lead
   const bIds = new Set(db.blocked.map((b) => b.id).filter(Boolean)), bNames = new Set(db.blocked.map((b) => b.key));
   for (const f of [...items].sort((a, b) => quality(b) - quality(a))) {
     if (added >= limit) break;
     if (db.leads[f.id]) {
       dupes++;
+      continue;
+    }
+    if (sited.has(f.id)) {
+      hidden++;
       continue;
     }
     if (gone.has(f.id) || bIds.has(f.id) || bNames.has(bizKey(f.name))) {
@@ -190,7 +195,7 @@ async function discover(env, p) {
   }
   const { items, debug } = found;
   const db = await loadDB(env);
-  const { added, dupes, hidden, ids } = mergeFound(db, items, clampLimit(p.limit));
+  const { added, dupes, hidden, ids } = mergeFound(db, items, clampLimit(p.limit), p.mode);
   await saveDB(env, db);
   return json({ found: items.length, added, dupes, hidden, ids: ids.slice(0, 400), asked: clampLimit(p.limit), debug });
 }
@@ -207,7 +212,7 @@ async function discoverImport(env, p) {
     items.push({ id, name, category: cap(x.category, 60), address: cap(x.address, 200), phone: cap(x.phone, 40), email: isEmail(email) ? email : '', website: cap(x.website, 300), source: 'osm' });
   }
   const db = await loadDB(env);
-  const { added, dupes, hidden, ids } = mergeFound(db, items, clampLimit(p.limit));
+  const { added, dupes, hidden, ids } = mergeFound(db, items, clampLimit(p.limit), p.mode);
   await saveDB(env, db);
   return json({ found: items.length, added, dupes, hidden, ids: ids.slice(0, 400), asked: clampLimit(p.limit), debug: { place: cap(p.place, 160), raw: items.length, server: 'your browser' } });
 }
@@ -380,6 +385,13 @@ function dropClosed(db, lead) {
   return { id: lead.id, name: lead.name };
 }
 
+// Strict "no website" searches: a lead found to have a site is removed and remembered, so it isn't added and checked again.
+function dropSited(db, lead) {
+  delete db.leads[lead.id];
+  db.sited = [...new Set([...(db.sited || []), lead.id])].slice(-3000);
+  return { id: lead.id, name: lead.name, site: lead.website || '' };
+}
+
 async function verify(env, p) {
   const ids = (Array.isArray(p.ids) ? p.ids : []).slice(0, 3).map(String);
   const city = cap(p.city, 120);
@@ -387,7 +399,7 @@ async function verify(env, p) {
   const todo = ids.map((id) => snap.leads[id]).filter(Boolean);
   const outs = await Promise.all(todo.map((l) => verifySite(env, { name: l.name, phone: l.phone, address: l.address, website: l.website }, city).catch((e) => ({ status: 'unsure', evidence: [String(e.message).slice(0, 120)], checkedAt: Date.now() }))));
   const db = await loadDB(env);
-  const leads = [], closed = [];
+  const leads = [], closed = [], sited = [];
   todo.forEach((l, i) => {
     const lead = db.leads[l.id];
     if (!lead) return;
@@ -397,11 +409,12 @@ async function verify(env, p) {
     if (r.status === 'site' && r.source !== 'listed' && !lead.website) {
       lead.website = cap(r.site, 300);
       lead.audit = null;
+      if (p.strict) { lead.website = cap(r.site, 300); sited.push(dropSited(db, lead)); return; }
     }
     leads.push(lead);
   });
   await saveDB(env, db);
-  return json({ leads, closed });
+  return json({ leads, closed, sited });
 }
 
 // Fills in what's missing (email, phone, website, social pages) from public sources. Never overwrites something you already have;
@@ -433,16 +446,18 @@ async function enrich(env, p) {
   const todo = ids.map((id) => snap.leads[id]).filter(Boolean);
   const outs = await Promise.all(todo.map((l) => enrichContacts(env, { name: l.name, phone: l.phone, address: l.address, website: l.website }, city).catch(() => null)));
   const db = await loadDB(env); // fresh copy so parallel calls never overwrite each other
-  const leads = [];
+  const leads = [], sited = [];
   const got = {};
   todo.forEach((t, i) => {
     const lead = db.leads[t.id];
     if (!lead || !outs[i]) return;
+    const had = !!lead.website;
     got[t.id] = applyContacts(db, lead, outs[i]);
+    if (p.strict && !had && lead.website) { sited.push(dropSited(db, lead)); return; }
     leads.push(lead);
   });
   await saveDB(env, db);
-  return json({ leads, got });
+  return json({ leads, got, sited });
 }
 
 async function audit(env, p) {

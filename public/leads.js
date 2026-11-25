@@ -83,6 +83,7 @@ function vFind() {
           <div style="flex:0 0 auto;min-width:0"><button class="btn p" data-act="find">${ico('mapPin')} Find leads</button></div>
         </div>
         <label class="chk" style="margin-top:10px"><input type="checkbox" id="fAuto" ${store.get('auto', '1') === '1' ? 'checked' : ''}> Check every result for a real website, then audit the ones that have one <span class="hint">(OpenStreetMap often misses websites, so this is what separates real leads from false ones)</span></label>
+        <label class="chk" id="fStrictL" style="margin-top:10px"><input type="checkbox" id="fStrict" ${store.get('strict', '1') === '1' ? 'checked' : ''}> Only keep businesses with no website <span class="hint">(anything found to have one is removed as it is checked)</span></label>
         <label class="chk" style="margin-top:6px"><input type="checkbox" id="fCon" ${store.get('con', '1') === '1' ? 'checked' : ''}> Also look up phone numbers and social pages <span class="hint">(their site, web search, Facebook, Yelp)</span></label>
       </div>
       <div id="findres"></div>
@@ -122,6 +123,7 @@ function mountSearch() {
 function mountMode() {
   const m = $('#fModeMount'); if (!m) return;
   const cur = ['has_site', 'any'].includes(store.get('mode', 'none')) ? store.get('mode') : 'none';
+  const sl = $('#fStrictL'); if (sl) sl.style.display = cur === 'none' ? '' : 'none';
   const set = (v) => { store.set('mode', v); mountMode(); };
   if (G()) return G().mount(m, 'Seg', { label: 'Looking for', value: cur, onValueChange: set, items: [{ value: 'none', label: 'No site' }, { value: 'has_site', label: 'Has site' }, { value: 'any', label: 'Both' }] });
   m.innerHTML = `<select id="fModeSel" aria-labelledby="fModeL"><option value="none" ${cur === 'none' ? 'selected' : ''}>No website</option><option value="has_site" ${cur === 'has_site' ? 'selected' : ''}>Has a website (audit it)</option><option value="any" ${cur === 'any' ? 'selected' : ''}>Both</option></select>`;
@@ -199,6 +201,8 @@ A.find = (btn) => act(btn, async () => {
   const body = { city: $('#fCity').value, category: $('#fCat').value, mode: ['has_site', 'any'].includes(store.get('mode', 'none')) ? store.get('mode') : 'none', radius: Math.round(numVal('fRad', 10, 1, 30) * 1.609344 * 10) / 10, limit: numVal('fLim', 20, 1, 100) };
   const auto = $('#fAuto') ? $('#fAuto').checked : true; CONTACTS.on = $('#fCon') ? $('#fCon').checked : true; store.set('con', CONTACTS.on ? '1' : '0');
   store.set('city', body.city); store.set('cat', body.category); store.set('mode', body.mode); store.set('radmi', String(numVal('fRad', 10, 1, 30))); store.set('lim', String(body.limit)); store.set('auto', auto ? '1' : '0');
+  if ($('#fStrict')) store.set('strict', $('#fStrict').checked ? '1' : '0');
+  const strict = body.mode === 'none' && store.get('strict', '1') === '1';
   try { ui.lastFind = await api('discover', { method: 'POST', body }); }
   catch (e) {
     if (!(e.data && e.data.clientFallback)) { ui.lastFind = { error: e.message }; renderFindRes(); throw e; }
@@ -206,16 +210,16 @@ A.find = (btn) => act(btn, async () => {
     const el = $('#findres'); if (el) el.innerHTML = '<div class="hint" style="margin-top:14px">Server could not reach the map. Searching from your browser…</div>';
     try {
       const f = await FINDER.run(body);
-      const r = await api('discover-import', { method: 'POST', body: { items: f.items, place: f.place, limit: body.limit } });
+      const r = await api('discover-import', { method: 'POST', body: { items: f.items, place: f.place, limit: body.limit, mode: body.mode } });
       ui.lastFind = { ...r, debug: { ...r.debug, place: f.place, raw: f.raw, chains: f.chains, server: 'your browser' } };
     } catch (e2) { ui.lastFind = { error: 'Search failed. Server: ' + e.message + '. Browser: ' + e2.message }; renderFindRes(); throw e2; }
   }
   S = await api('state'); chrome(); renderFindRes(); renderTriage();
   const ids = (ui.lastFind && ui.lastFind.ids) || [];
   if (auto && ids.length) {
-    const st = await checkAndAudit(ids, pipeSay);
+    const st = await checkAndAudit(ids, pipeSay, { strict });
     ui.lastFind.check = st; pipeSay(''); chrome(); renderFindRes(); renderTriage();
-    toast(`${ids.length} new · ${st.none + st.social} have no real website · ${st.site} had one${st.phones != null ? ' · ' + st.phones + ' phone numbers found' : ''}`, 6500);
+    toast(`${ids.length - st.removed - st.closed} kept · ${st.none + st.social} have no real website · ${st.site} had one${st.removed ? ` (${st.removed} removed)` : ''}${st.phones != null ? ' · ' + st.phones + ' phone numbers found' : ''}`, 6500);
   } else toast(`${ui.lastFind.added} new leads added`);
 });
 
@@ -447,20 +451,21 @@ async function pool(items, n, fn) {
   let i = 0;
   await Promise.all(Array.from({ length: n }, async () => { while (i < items.length && !PIPE.stop) { const k = i++; await fn(items[k], k); } }));
 }
-async function checkAndAudit(ids, say) {
+async function checkAndAudit(ids, say, opt = {}) {
   PIPE.stop = false; PIPE.on = true;
-  const st = { total: ids.length, checked: 0, site: 0, none: 0, social: 0, unsure: 0, audited: 0, poor: 0, closed: 0 };
-  const dropGone = (r) => (r.closed || []).forEach((g) => { S.leads = S.leads.filter((x) => x.id !== g.id); st.closed++; });
-  const line = (ph) => say(`${ph} · ${st.checked}/${st.total} checked · <b>${st.none}</b> no site · ${st.social} social only · ${st.site} have a site${st.audited ? ` (${st.poor} poor)` : ''}${st.closed ? ` · <b>${st.closed}</b> closed removed` : ''} <button class="btn s" data-act="stopPipe">Stop</button>`);
+  const st = { total: ids.length, checked: 0, site: 0, none: 0, social: 0, unsure: 0, audited: 0, poor: 0, closed: 0, removed: 0 };
+  const dropGone = (r) => { (r.closed || []).forEach((g) => { S.leads = S.leads.filter((x) => x.id !== g.id); st.closed++; }); (r.sited || []).forEach((g) => { S.leads = S.leads.filter((x) => x.id !== g.id); st.removed++; }); };
+  const line = (ph) => say(`${ph} · ${st.checked}/${st.total} checked · <b>${st.none}</b> no site · ${st.social} social only · ${st.site} have a site${st.audited ? ` (${st.poor} poor)` : ''}${st.closed ? ` · <b>${st.closed}</b> closed removed` : ''}${st.removed ? ` · <b>${st.removed}</b> removed (had a website)` : ''} <button class="btn s" data-act="stopPipe">Stop</button>`);
   try {
     const todo = ids.filter((id) => { const l = S.leads.find((x) => x.id === id); return l && !l.website; });
     const chunks = []; for (let i = 0; i < todo.length; i += 2) chunks.push(todo.slice(i, i + 2));
     st.total = todo.length;
     await pool(chunks, 2, async (ch) => {
       try {
-        const r = await api('verify', { method: 'POST', body: { ids: ch, city: store.get('city', '') } });
-        dropGone(r); st.checked += (r.closed || []).length;
+        const r = await api('verify', { method: 'POST', body: { ids: ch, city: store.get('city', ''), strict: !!opt.strict } });
+        dropGone(r); st.checked += (r.closed || []).length + (r.sited || []).length;
         r.leads.forEach((l) => { setLead(l); st.checked++; const s = l.web && l.web.status; if (s === 'site') st.site++; else if (s === 'none') st.none++; else if (s === 'social') st.social++; else st.unsure++; if ($('#tb')) patchRow(l); });
+        st.site += (r.sited || []).length;
       } catch { st.checked += ch.length; st.unsure += ch.length; }
       line('Checking websites');
     });
@@ -476,7 +481,8 @@ async function checkAndAudit(ids, say) {
       const ech = []; for (let i = 0; i < want.length; i += 2) ech.push(want.slice(i, i + 2));
       await pool(ech, 2, async (ch) => {
         try {
-          const r = await api('enrich', { method: 'POST', body: { ids: ch, city: store.get('city', '') } });
+          const r = await api('enrich', { method: 'POST', body: { ids: ch, city: store.get('city', ''), strict: !!opt.strict } });
+          dropGone(r);
           r.leads.forEach((l) => { setLead(l); st.contacts++; const g = (r.got || {})[l.id] || {}; if (g.email) st.emails++; if (g.phone) st.phones++; if ($('#tb')) patchRow(l); });
         } catch { st.contacts += ch.length; }
         say(`Finding contact info · ${st.contacts}/${want.length} · <b>${st.phones}</b> phone numbers so far <button class="btn s" data-act="stopPipe">Stop</button>`);

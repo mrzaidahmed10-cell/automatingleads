@@ -96,3 +96,6 @@ FlightLine finds businesses with no or poor websites and helps you phone them.
 ## Closed businesses
 
 Closed places are filtered out at every step: map listings flagged closed (OpenStreetMap lifecycle tags, Google/Serper status), listings with no phone and no reviews, search results saying the business has closed (checked when verifying, matched to the city), and sites that say they have closed (checked when auditing). Anything found closed after the fact is removed and remembered, so a search never brings it back.
+
+### No-website-only searches
+With "Looking for: No site", the finder has an "Only keep businesses with no website" option (on by default). Each result is checked, and any that turn out to have a website are removed and remembered, so they aren't re-added by later "No site" searches.
